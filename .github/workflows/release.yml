@@ -1,0 +1,119 @@
+name: Binaries
+
+# Nobody should have to install a Pascal compiler to run a radio server. This
+# builds the binary on each platform's own runner and attaches the results to
+# the run; a tag starting with v also publishes them as a release.
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+          - os: macos-latest
+            target: aarch64-darwin
+          - os: macos-13
+            target: x86_64-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the compiler (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc \
+            lazarus-src zip
+
+      - name: Install the compiler (macOS)
+        if: runner.os == 'macOS'
+        run: brew install fpc
+
+      # Debian packages the LazUtils sources; nobody else does. A sparse
+      # checkout takes the two directories the build needs without the rest of
+      # Lazarus, which is a large repository to clone for four units.
+      - name: LazUtils sources (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://gitlab.com/freepascal.org/lazarus/lazarus.git "$RUNNER_TEMP/lazarus"
+          git -C "$RUNNER_TEMP/lazarus" sparse-checkout set components/lazutils
+          echo "LAZUTILS_DIR=$RUNNER_TEMP/lazarus/components/lazutils" >> "$GITHUB_ENV"
+
+      - name: Cache Indy checkout
+        uses: actions/cache@v4
+        with:
+          path: .build/indy
+          key: indy-${{ runner.os }}-${{ runner.arch }}-1
+
+      - name: Report the toolchain
+        run: |
+          fpc -iV
+          echo "target: $(fpc -iTP)-$(fpc -iTO)"
+
+      - name: Build
+        run: ./script/build.sh
+
+      # The point of building on the platform's own runner is that the result
+      # is then known to work there, not merely to have compiled. This is the
+      # same suite the Linux job has always run.
+      - name: Smoke test
+        run: ./script/smoke-test.sh
+
+      - name: Package
+        id: package
+        run: |
+          version=$(sed -n "s/^ *APP_VERSION *= *'\(.*\)';.*/\1/p" src/common.pas)
+          target=${{ matrix.target }}
+          stage="retuner-$version-$target"
+          mkdir -p "$stage/config"
+          cp "bin/$target/retuner" "$stage/"
+          cp cfg/retuner.ini "$stage/"
+          cp cfg/avr.ini cfg/stations.ini cfg/podcasts.ini "$stage/config/"
+          cp LICENSE.txt README.md "$stage/"
+          tar -czf "$stage.tar.gz" "$stage"
+          echo "name=$stage" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -l "$stage.tar.gz"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz \
+            --title "Retuner ${GITHUB_REF_NAME}" \
+            --generate-notes
