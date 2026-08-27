@@ -5,11 +5,16 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 # the add-on to a different revision.
 FROM ${BUILD_FROM} AS builder
 
+# libc6-dev and libsqlite3-dev are what the *linker* needs -- the base image is
+# minimal and ships neither the C runtime startup objects nor the .so symlinks
+# for -lc, -lpthread, -ldl, -lrt and -lsqlite3. Without them the compile
+# succeeds and only the link fails.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates git zip \
       fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc \
       lazarus-src \
+      libc6-dev libsqlite3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 ARG RETUNER_REPO=https://github.com/ollisulopuisto/YTuner.git
