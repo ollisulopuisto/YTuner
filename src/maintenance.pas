@@ -23,7 +23,11 @@ type
 const
   MAINTENANCE_SERVICE = 'Maintenance Service';
   MAINTENANCESERVER_IPADDRESS = '127.0.0.1';
-  MAINTENANCESERVER_PORT = 8080;
+  // 8080 is the first port anything on a home server takes - proxies, the
+  // add-on's own stations editor, a dev server someone left running - and a
+  // shutdown endpoint that loses that race is a shutdown endpoint that is not
+  // there when you need it. 8750 is the bottom of the FM band, and quiet.
+  MAINTENANCESERVER_PORT = 8750;
   MSG_SERVICE = 'service';
   MSG_SHUTTING_DOWN = 'Shutting down..';
   MSG_DONE = 'Done';

@@ -288,6 +288,7 @@ You can also use your favorite DNS server like `dnsmasq`.
 ### Retuner Maintenance Service
 Retuner has a built-in maintenance service for diagnostic and future goals. 
 At this moment you can use it to shut down Retuner service only.
+It is off by default, and when enabled listens on `127.0.0.1:8750`. That port was 8080 up to and including 1.2.6, which is the first port a home server hands out — a proxy, a container, the add-on's own stations editor. An existing `retuner.ini` keeps whatever port it already has; only a config file written from scratch gets 8750.
 >Tip: In most cases, you will not need this functionality. See [Application configuration](README.md#application-configuration) section below.
 
 ### Application configuration

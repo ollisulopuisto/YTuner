@@ -110,6 +110,51 @@ check "deep path main menu" \
 check "deep path station lookup" \
   "/setupapp/karcher/asp/BrowseXML/statxml.asp?mac=aabbccddee&id=x" "<ListOfItems>"
 
+# The maintenance service defaulted to 8080 for years, which is also where the
+# add-on puts the stations editor: two of this project's own services claiming
+# one port, and 8080 is the first port anything else on a home server takes.
+# The defaults the binary writes into a fresh ini are checked here against every
+# other port this project ships a default for, the add-on's options included.
+echo "Default ports"
+port_check() {
+  if [ "$2" = ok ]; then
+    echo "  ok   $1"
+  else
+    echo "  FAIL $1 ($2)"
+    fail=1
+  fi
+}
+
+maint=$(sed -n 's/^MaintenanceServerPort=\([0-9]*\).*/\1/p' "$WORK/retuner.ini")
+if [ -z "$maint" ]; then
+  port_check "maintenance default is written to a fresh ini" "no MaintenanceServerPort line"
+else
+  # Every other default in the generated ini, plus the add-on's own port
+  # options - the schema entries below them read "port", not a number, so they
+  # do not match.
+  other_ports=$(
+    grep -E '^[A-Za-z]+Port=[0-9]+' "$WORK/retuner.ini" \
+      | grep -v '^MaintenanceServerPort=' | cut -d= -f2
+    sed -n 's/^  [a-z_]*port: *\([0-9][0-9]*\) *$/\1/p' "$ROOT/retuner/config.yaml"
+  )
+  clash=""
+  for p in $other_ports; do
+    if [ "$p" = "$maint" ]; then clash="$p"; fi
+  done
+  if [ -n "$clash" ]; then
+    port_check "maintenance default is not another service's port" \
+      "$maint is already a default elsewhere"
+  else
+    port_check "maintenance default is not another service's port" ok
+  fi
+
+  if [ "$maint" = 8080 ]; then
+    port_check "maintenance default avoids 8080" "still 8080"
+  else
+    port_check "maintenance default avoids 8080" ok
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "--- server log ---" >&2
   cat "$WORK/server.log" >&2
