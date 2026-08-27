@@ -177,9 +177,12 @@ begin
   with TFPHttpClient.Create(nil) do
   try
     try
+      ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+      IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
       AddHeader(HTTP_HEADER_ACCEPT,HTTP_RESPONSE_CONTENT_TYPE[ctJSON]);
       AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
-      Result:=RemoveEscChars(Get(RBAPIURL+'/json/'+AURL));
+// Kept raw: stripping ';' here would corrupt Shoutcast stream URLs such as
+// http://host:8000/;. Per-field sanitising happens in SetRBStation instead.
       Result:=Get(RBAPIURL+'/json/'+AURL);
     except
       Logging(ltError,MSG_RADIOBROWSER+': '+MSG_ERROR+' '+MSG_GETTING+' '+AURL);

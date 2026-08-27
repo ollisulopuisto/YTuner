@@ -207,6 +207,8 @@ begin
   try
     with TFPHttpClient.Create(nil) do
       try
+        ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+        IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
         SimpleGet('http://'+WebServerIPAddress+':'+WebServerPort.ToString);
       finally
         Free;

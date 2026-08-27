@@ -440,6 +440,8 @@ begin
             with TFPHttpClient.Create(nil) do
               try
                 AllowRedirect:=True;
+                ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+                IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
                 LHeaderAcceptStr:=HTTP_RESPONSE_CONTENT_TYPE[ctJPG];
                 {$IFDEF READERPNG}
                 LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctPNG];
@@ -489,6 +491,10 @@ begin
                       begin
                         try
                           LoadFromStream(LStream,LImageReader);
+// The image is decoded now, so drop the downloaded bytes before re-encoding.
+// Writing at the stream's end would otherwise leave source and converted image
+// concatenated, which is what reaches the AVR and the icon cache.
+                          LStream.Size:=0;
                           if (Width>IconSize) or (Height>IconSize) then
                             begin
                               if Width>=Height then
@@ -513,22 +519,28 @@ begin
                           Logging(ltError, 'Unsupported stream with image type: "'+LURL+'"? /'+E.Message+'/');
                         end;
                       end;
-                    {$IFDEF WRITERJPG}
-                    ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
-                    {$ELSE}
-                    {$IFDEF WRITERPNG}
-                    ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
-                    {$ENDIF}
-                    {$ENDIF}
-                    if IconCache then
+// A failed conversion leaves the stream empty; serving or caching that would
+// hand the AVR a 0-byte icon and poison the cache with it.
+                    if LStream.Size>0 then
                       begin
-                        if not DirectoryExists(CachePath) then CreateDir(CachePath);
-                        try
-                          LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
-                        except
-                          on E : Exception do
-                            Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
-                        end;
+                        LStream.Position:=0;
+                        {$IFDEF WRITERJPG}
+                        ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
+                        {$ELSE}
+                        {$IFDEF WRITERPNG}
+                        ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
+                        {$ENDIF}
+                        {$ENDIF}
+                        if IconCache then
+                          begin
+                            if not DirectoryExists(CachePath) then CreateDir(CachePath);
+                            try
+                              LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
+                            except
+                              on E : Exception do
+                                Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
+                            end;
+                          end;
                       end;
                   finally
                     FreeAndNil(LImageWriter);
