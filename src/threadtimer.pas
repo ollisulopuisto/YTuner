@@ -43,9 +43,11 @@ const
   RB_THREAD = 'RBThread';
   MS_THREAD = 'MSThread';
   GT_THREAD = 'GTThread';
+  PS_THREAD = 'PSThread';
 
 var
   RBThread, MSThread : TThreadTimer;
+  PSThread : TThreadTimer = nil;
   GTThread : TThreadTimer = nil;
 
 implementation

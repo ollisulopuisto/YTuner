@@ -113,6 +113,10 @@ const
   INI_MYSTATIONS = 'MyStations';
   INI_MY_STATIONS_FILE = 'MyStationsFile';
   INI_MY_STATIONS_AUTO_REFRESH_PERIOD = 'MyStationsAutoRefreshPeriod';
+  INI_PRESETS = 'Presets';
+  INI_PRESETS_COUNTRIES = 'PresetsCountries';
+  INI_PRESETS_URL = 'PresetsURL';
+  INI_PRESETS_AUTO_REFRESH_PERIOD = 'PresetsAutoRefreshPeriod';
   INI_PODCASTS = 'Podcasts';
   INI_PODCASTS_FILE = 'PodcastsFile';
   INI_PODCASTS_EPISODES_LIMIT = 'PodcastEpisodesLimit';

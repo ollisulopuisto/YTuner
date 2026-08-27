@@ -8,9 +8,11 @@
 # and needs no privileged ports.
 set -eu
 
+# shellcheck disable=SC1007  # CDPATH= is a deliberate empty assignment for cd
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BIN=${1:-}
 if [ -z "$BIN" ]; then
+  # shellcheck disable=SC2012  # one glob under bin/, named by the target triple
   BIN=$(ls "$ROOT"/bin/*/ytuner 2>/dev/null | head -1) \
     || { echo "error: no binary found; run script/build.sh first" >&2; exit 1; }
 fi

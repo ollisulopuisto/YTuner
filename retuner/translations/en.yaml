@@ -86,6 +86,21 @@ configuration:
     description: >-
       Your own station list, kept in stations.ini in this add-on's configuration
       folder. An example is written there on first start.
+  presets:
+    name: Country presets
+    description: >-
+      Fetches a curated station list for the countries below and merges it into
+      My stations, so there is something worth playing before you write a
+      station file. Your own stations.ini is loaded first and always wins: a
+      category in both is merged rather than duplicated. Lists are cached, so a
+      failed fetch costs you yesterday's copy rather than the whole menu.
+  preset_countries:
+    name: Preset countries
+    description: >-
+      Comma-separated two-letter country codes, such as "fi" or "fi,se".
+      Anything that is not exactly two letters is refused and named in the log.
+      Leave empty and nothing is fetched. Available lists are in the presets
+      folder of the Retuner repository.
   podcasts:
     name: Podcasts
     description: >-

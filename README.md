@@ -27,6 +27,7 @@ or any others powered by cross-build abilities of [Free Pascal Compiler](https:/
 
 YTuner supports :
 * Custom stations list files (aka MyStations) : YAML files (YCast compatible) or INI files.
+* Curated per-country station presets, fetched from a central list and merged into your own stations.
 * Great [Radio-browser.info](https://www.radio-browser.info) functionality.
 * AVR bookmarks. Single bookmark for many AVRs or dedicated bookmark for each AVR (if you own more then one) with support of "add" and "del" operations sent from AVR devices. 
 * Easy application configuration with ini files. 
@@ -266,6 +267,38 @@ Category two name:
 ```
 YTuner can convert and resize on the fly logo image from JPEG, PNG, GIFF and TIFF (optionaly) to JPEG (default) or PNG format. 
 >Tip: URLs with logo station images are optional.
+
+### Country presets
+
+Radio-browser carries tens of thousands of stations and holds no opinion about
+any of them, which makes the first five minutes on a new install hard work with
+nothing but a jog dial. A preset is a short, curated list for one country, kept
+in [`presets/`](presets/) and fetched at startup:
+
+```ini
+[Presets]
+Enable=1
+PresetsCountries=fi,se
+```
+
+Retuner fetches `<PresetsURL>/<code>.ini` for each country, checks that it
+parses and contains at least one `http(s)` URL, and only then replaces its
+cached copy under `config/presets/`. A fetch that fails leaves the previous copy
+in place, so a network problem costs you yesterday's list rather than the whole
+menu.
+
+Presets are merged into `MyStations`, not kept apart from it. **Your own file is
+loaded first and always wins**: a category that appears in both is merged rather
+than duplicated, and a station you already have is not added twice. Nothing in a
+preset can overwrite anything of yours.
+
+`PresetsURL` points at this repository by default; set it to your own fork or an
+internal server if you would rather not fetch from GitHub.
+
+To add or refresh a country, see [`presets/README.md`](presets/README.md).
+`script/make-preset.py` builds one by connecting to every candidate stream and
+keeping only what actually serves audio, and `--prune` re-checks a file that has
+been sitting a while.
 
 ### Bookmark
 What is the `Bookmark` ? `Bookmark` is what is mentioned in the AVR user's manual. `Bookmark` is operated only from the AVR device using the remote control. When you listen to a new station you can decide to put it into the `Bookmark` or want to remove it from it. All stations added in this way are visible in the `Bookmark` submenu of the AVR receiver.

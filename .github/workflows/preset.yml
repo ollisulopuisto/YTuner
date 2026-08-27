@@ -1,0 +1,62 @@
+name: Build a country preset
+
+# Generating a preset needs to reach radio-browser.info and then connect to
+# every candidate stream, which is exactly the kind of network access a
+# development machine often does not have. This does it on a runner and hands
+# back the file for review -- it deliberately does not commit anything, because
+# the generator cannot judge whether a station belongs in a national preset.
+# See presets/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      country:
+        description: 'ISO 3166-1 alpha-2 country code, e.g. fi'
+        required: true
+        type: string
+      candidates:
+        description: 'How many stations to consider'
+        required: false
+        default: '60'
+        type: string
+      per_category:
+        description: 'Cap per category'
+        required: false
+        default: '8'
+        type: string
+
+jobs:
+  preset:
+    name: Generate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the country code
+        env:
+          COUNTRY: ${{ inputs.country }}
+        run: |
+          printf '%s' "$COUNTRY" | grep -Eqx '[A-Za-z]{2}' \
+            || { echo "'$COUNTRY' is not a two-letter country code"; exit 1; }
+
+      - name: Generate and verify
+        env:
+          COUNTRY: ${{ inputs.country }}
+          CANDIDATES: ${{ inputs.candidates }}
+          PER_CATEGORY: ${{ inputs.per_category }}
+        run: |
+          CC=$(printf '%s' "$COUNTRY" | tr '[:upper:]' '[:lower:]')
+          ./script/make-preset.py \
+            --country "$CC" \
+            --out "presets/$CC.ini" \
+            --candidates "$CANDIDATES" \
+            --per-category "$PER_CATEGORY"
+          echo "--- presets/$CC.ini ---"
+          cat "presets/$CC.ini"
+
+      - name: Upload it for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: preset-${{ inputs.country }}
+          path: presets/*.ini
+          if-no-files-found: error
