@@ -211,9 +211,10 @@ do by hand:
   to the new one the next time the file is saved.
 
 You will want to point your service file, Docker command or shell alias at
-`retuner` rather than `retuner`, since that is the file that now exists.
+`retuner` rather than `ytuner`, since that is the file that now exists.
 
 Save and extract the files into a directory you have read/write/execute rights to. The account running Retuner also needs permission to open TCP port 80, and UDP 53 if you enable the DNS service.
+>Tip: if something on that machine already answers on port 80, see [doc/STANDALONE.md](doc/STANDALONE.md) — it covers why the port is not negotiable, how to tell whether a second address would help, and a systemd unit for running Retuner on a small machine of its own.
 
 You should end up with a directory laid out roughly like this:
 
