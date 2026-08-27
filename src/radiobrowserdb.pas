@@ -237,7 +237,9 @@ var
 begin
   Result:=False;
   try
-    LJSON:=RadiobrowserAPIRequest(AURL);
+// Every caller here fetches a whole table, so the limit must be explicit or a
+// self-hosted mirror caps the result at its api-default-limit.
+    LJSON:=RadiobrowserAPIRequest(AddBulkLimit(AURL));
   except
     on E: Exception do
       begin

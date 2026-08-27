@@ -52,6 +52,11 @@ const
   API_OFFSET_PATH = 'offset';
   API_LIMIT_PATH = 'limit';
 
+// radiobrowser-api-rust applies its own api-default-limit (1000 by default) to
+// any query that does not name a limit, so a bulk fetch against a self-hosted
+// mirror silently returned only the first 1000 rows. Ask explicitly.
+  API_BULK_LIMIT = 1000000;
+
   API_POPULAR_FILTER_PATH = '?order=votes&reverse=true&limit=';
   API_SEARCH_FILTER_PATH = '?order=name&reverse=false&limit=';
   API_HIDEBROKEN_FILTER_PATH = 'hidebroken=true';
@@ -112,6 +117,8 @@ var
 // handler used to be able to delete an entry while another was iterating.
   RBCacheLock: TCriticalSection;
 
+function AddAPIParam(AURL, AParam: string): string;
+function AddBulkLimit(AURL: string): string;
 function GetAPIURLRange(AElementNumber,AElementCount: integer): string;
 function RadiobrowserAPIRequest(AURL: string): RawByteString;
 function RadiobrowserAPIRequestJSON(AURL: string): TJSONData;
@@ -168,6 +175,19 @@ constructor TRBObjectsList.Create;
 begin
   inherited Create;
   OwnsObjects:=True;
+end;
+
+function AddAPIParam(AURL, AParam: string): string;
+begin
+  Result:=AURL+IfThen(AURL.Contains('?'),'&','?')+AParam;
+end;
+
+function AddBulkLimit(AURL: string): string;
+begin
+  if AURL.Contains(API_LIMIT_PATH+'=') then
+    Result:=AURL
+  else
+    Result:=AddAPIParam(AURL,API_LIMIT_PATH+'='+IntToStr(API_BULK_LIMIT));
 end;
 
 function GetAPIURLRange(AElementNumber,AElementCount: integer): string;
@@ -314,7 +334,7 @@ begin
   LStations:=TStringList.Create;
   try
     try
-      SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',RadiobrowserAPIRequest(API_STATIONS_PATH),LStations);
+      SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',RadiobrowserAPIRequest(AddBulkLimit(API_STATIONS_PATH)),LStations);
     except
       On E: Exception do
         begin
@@ -410,7 +430,7 @@ begin
       end;
 
       try
-        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(LURL+IfThen(HIDE_BROKEN_STATIONS,'&'+API_HIDEBROKEN_FILTER_PATH,'')));
+        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(LURL+IfThen(HIDE_BROKEN_STATIONS,'&'+API_HIDEBROKEN_FILTER_PATH,''))));
         try
           if LJSONArray.Count>0 then
             begin
@@ -507,7 +527,7 @@ begin
         if (RBCacheType=catNone) or (Result=0) then
           begin
             try
-              LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,'')));
+              LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,''))));
               try
                 if LJSONArray.Count>0 then
                   begin
@@ -578,7 +598,7 @@ begin
   if (RBCacheType=catNone) or (Result=0) then
     begin
       try
-        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,'')));
+        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,''))));
         try
           if LJSONArray.Count>0 then
             begin
