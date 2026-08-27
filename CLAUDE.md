@@ -35,11 +35,12 @@ local one, so "clean here" is not "clean there" — lint at `--severity=style`
 before pushing. `CHECKED=1 ./script/build.sh` adds `-Cr -Co -CR`, and CI runs
 every suite against that binary.
 
-Deliberately absent: `-gh` (heaptrc). It links and reports, but accounts for a
-handful of allocations on this program — nowhere near a real run — so it reports
-zero leaks whether or not there are any. A green light that cannot go red is
-worse than no light. If you can make it see the whole heap, it becomes worth
-having.
+`CHECKED=1` also links heaptrc, and leaves `cmem` out so that it works. `cmem`
+replaces the memory manager with C `malloc` in its initialization, and `-gh`
+installs heaptrc *first* — so cmem replaced the manager underneath and heaptrc
+saw 6 allocations for a run that makes 43,000. Loading heaptrc after cmem
+instead makes it wrap cmem, and segfaults mid-run. Dropping cmem from the
+diagnostic build is what actually works; shipped builds are unchanged.
 
 **Comments say why, not what.** Where a line exists because of a specific bug,
 name the bug. `// Lines without '=' reserved a slot they never filled, so they
@@ -54,14 +55,20 @@ it:
     ./script/smoke-test.sh          vTuner protocol, both path shapes, legacy routes
     ./script/test-presets.sh        fetch, validate, cache, merge, fallbacks
     ./script/test-radiobrowser.sh   filtering, and awkward upstream responses
+    ./script/test-leaks.sh          whether the heap grows with load (needs CHECKED=1)
 
 Each takes a binary path as `$1` and needs no network — mocks stand in for
 radio-browser and the preset repository. That makes them an implementation-
 independent spec: they would run against a rewrite in another language as-is.
 
-**Give every test phase its own ports.** Sharing them lets a mock that failed to
-bind leave the previous phase's server answering, which produces confident and
-completely false results. This has happened.
+**Give every test phase its own ports, and pass them in as arguments.** Sharing
+them lets a mock that failed to bind leave the previous phase's server
+answering, which produces confident and completely false results. This has
+happened twice. The second time, the ports were meant to differ — a helper
+incremented a global — but each call site was a command substitution, so the
+increment never left the subshell. A knowingly leaky binary then reported an
+identical figure at both loads and the check passed it. Take the ports as
+parameters and the whole class of bug goes away.
 
 ## Things that look safe and are not
 

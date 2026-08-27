@@ -17,7 +17,19 @@ program retuner;
 uses
   {$DEFINE USESSL}     //Comment/uncomment this line to disable/enable SSL support.
   {$IFDEF UNIX}
-  cthreads, cmem,
+  cthreads,
+// cmem swaps the memory manager for C malloc/free. heaptrc cannot see through
+// it: -gh installs heaptrc first and cmem's initialization then replaces the
+// manager underneath, so heaptrc reported "6 memory blocks allocated" for a run
+// that parses ini files and serves XML -- zero leaks, always, whatever the
+// truth. Loading heaptrc after cmem instead makes it wrap cmem, and that
+// segfaults mid-run.
+// So the diagnostic build simply leaves cmem out, and -gh then measures the
+// whole heap. CHECKED=1 ./script/build.sh passes -dNO_CMEM -gh; every shipped
+// build still uses cmem exactly as before.
+  {$IFNDEF NO_CMEM}
+  cmem,
+  {$ENDIF}
   {$ENDIF}
   LazUTF8,
   Classes, SysUtils, IniFiles, StrUtils, TypInfo, FileUtil,
