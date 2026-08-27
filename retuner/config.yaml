@@ -35,7 +35,7 @@ options:
   podcast_episodes_limit: 100
   bookmarks: true
   stations_editor: false
-  stations_editor_port: 8080
+  stations_editor_port: 8090
   stations_editor_user: admin
   stations_editor_password: ""
   log_level: normal
