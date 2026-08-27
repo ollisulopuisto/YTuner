@@ -199,7 +199,9 @@ successor service, and hijacking something that still works would break it.
 
 Retuner is a standalone binary. Beyond the optional OpenSSL and SQLite3 libraries below, it needs no runtime, framework, virtual machine or package manager.
 
-**There are no prebuilt Retuner releases yet.** Either use the Home Assistant add-on above, which builds it for you, or build it yourself with [`script/build.sh`](#building-on-linux-without-lazarus) — that needs only the Free Pascal compiler your distribution already ships. Upstream's [releases](https://github.com/coffeegreg/YTuner/releases) are builds of *YTuner* and do not carry this fork's fixes.
+**Prebuilt binaries are built by CI** for `x86_64-linux`, `aarch64-darwin`, `x86_64-darwin` and `x86_64-win64`. Every change attaches a tarball for each to its run in the [Actions](../../actions) tab, and a tagged version publishes them as a [release](../../releases); each carries the binary, `retuner.ini` and the sample config files, ready to extract and run. The macOS builds also run the smoke suite on their own runner, so they are known to work there and not merely to have compiled.
+
+You can still build it yourself with [`script/build.sh`](#building-on-linux-without-lazarus) — it needs only the Free Pascal compiler your distribution already ships — and the Home Assistant add-on above builds it for you. Upstream's [releases](https://github.com/coffeegreg/YTuner/releases) are builds of *YTuner* and do not carry this fork's fixes.
 
 ### Upgrading from YTuner, or from an earlier Retuner
 
