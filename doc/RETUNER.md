@@ -35,17 +35,20 @@ Done:
 - **The stall fixes** — single-fetch API calls, timeouts on every outbound request, correct icon encoding.
 - **Thread safety** — the caches, the database connection, the station list and the per-AVR config are no longer reached unsynchronised from several request threads.
 - **Playlist resolution** (`ResolvePlaylists`, off by default) — unwraps `.m3u`, `.pls`, `.asx` and `.xspf` links to the stream behind them, for firmware that cannot follow a playlist.
+- **HTTPS relay** (`RelayHTTPS`, off by default) — a growing share of stations are HTTPS-only, and these receivers cannot do TLS. The `all-as-http` setting only rewrites the scheme and hopes the station still answers on port 80, which increasingly it does not; the relay fetches the stream and re-serves it over plain HTTP, passing on the real content type and the station's ICY metadata. Off by default deliberately: it puts Retuner in the audio path for the whole time a station is playing, which is fine on a spare machine and less welcome on a small Raspberry Pi.
+- **A stations editor in the browser** (`WebGUI`, off by default) — edit the stations list without touching files over SSH. Binds to loopback and refuses to start without a password.
+- **Running from a VPS** — see [REMOTE-HOSTING.md](REMOTE-HOSTING.md). Setup on the listener's side is one DNS field on the amplifier, with no router configuration and nothing extra at home.
+- **A "local stations" main menu entry** driven by the configured country.
 
 Next:
 
-- **HTTPS relay** (off by default) — a growing share of stations are HTTPS-only, and these receivers cannot do TLS. Today the `all-as-http` setting just rewrites the scheme and hopes the station still answers on port 80, which increasingly it does not. An opt-in relay would let Retuner fetch the stream and re-serve it over plain HTTP. It is off by default deliberately: it puts Retuner in the audio path for the whole time a station is playing, which is fine on a spare machine and less welcome on a small Raspberry Pi.
-- **Browse improvements** — a "local stations" entry driven by the configured country, "recently played", and alphabetical sub-grouping so a country with thousands of stations stays navigable with a jog dial.
+- **Browse improvements** — "recently played", and alphabetical sub-grouping so a country with thousands of stations stays navigable with a jog dial.
+- **Podcasts** via RSS, which map cleanly onto the vTuner directory and station model.
+- **The web editor extended** to bookmarks and per-AVR filters.
 
 Under consideration:
 
-- **Spotify** — playing Spotify through a receiver that has no Spotify Connect of its own. The bridge already exists in projects such as [Spotycast](https://github.com/chourmovs/spotycast) and [librespot](https://github.com/librespot-org/librespot): Spotify playback is republished as an Icecast/HTTP stream, and Retuner's role is only to present that stream as a station the AVR can select. Music Assistant's newer Spotify pairing approach is worth evaluating before committing to an implementation. Expect caveats: Spotify Premium is required, latency means the receiver's transport buttons cannot usefully drive playback, and the underlying clients are unofficial — so this would be documented as an optional companion rather than bundled.
-- **Podcasts** via RSS, which map cleanly onto the vTuner directory and station model.
-- **A small web UI** for stations, bookmarks and per-AVR filters, instead of editing files by hand.
+- **Spotify** — playing Spotify through a receiver that has no Spotify Connect of its own. This works today with parts Retuner does not supply, and [SPOTIFY.md](SPOTIFY.md) documents the recipe: a Connect client such as [go-librespot](https://github.com/devgianlu/go-librespot) republishes playback as an Icecast stream, and Retuner presents that stream as a station. Bundling a Spotify client would tie the project's fate to an unofficial reimplementation of someone else's protocol, so the likelier direction is to make the join less manual — detect a local bridge, generate the station entry, relay track titles to the display. Music Assistant's newer Spotify pairing approach is worth studying first. Expect caveats either way: Premium is required, latency means the receiver's transport buttons cannot usefully drive playback, and Spotify has restricted these clients before.
 
 ## Building
 
