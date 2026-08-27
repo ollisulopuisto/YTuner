@@ -28,6 +28,7 @@ or any others powered by cross-build abilities of [Free Pascal Compiler](https:/
 YTuner supports :
 * Custom stations list files (aka MyStations) : YAML files (YCast compatible) or INI files.
 * Curated per-country station presets, fetched from a central list and merged into your own stations.
+* Frontier Silicon table radios (Hama, Medion, Technisat, Roberts, Pure, Sangean and others) as well as vTuner AVRs.
 * Great [Radio-browser.info](https://www.radio-browser.info) functionality.
 * AVR bookmarks. Single bookmark for many AVRs or dedicated bookmark for each AVR (if you own more then one) with support of "add" and "del" operations sent from AVR devices. 
 * Easy application configuration with ini files. 
@@ -151,6 +152,34 @@ Now, the list of supported **and tested** devices below is short, but I hope it 
 - Libratone
   * Libratone Zipp Speaker (Tested by [ndx1905-github](https://github.com/ndx1905-github). Thank you. /Read https://github.com/coffeegreg/YTuner/discussions/68 and/or https://github.com/coffeegreg/YTuner/issues/58 to find out how to use it/)
 
+### Frontier Silicon radios
+
+Frontier Silicon chipsets are in a large share of the cheap table radios sold
+across Europe — Hama, Medion, Technisat, Teufel, Roberts, Pure, Sangean, Auna,
+Karcher, Silvercrest and others. **Those radios used vTuner as their station
+directory** until Frontier dropped it in May 2019, which is when their
+favourites, custom stations and search stopped working.
+
+They speak the same protocol as the AVRs, just on a deeper URL:
+
+```
+AVR       /setupapp/<vendor>/loginxml.asp
+Frontier  /setupapp/<vendor>/asp/BrowseXML/loginXML.asp
+```
+
+Retuner answers both, and `*.wifiradiofrontier.com` is in the default
+`InterceptDNs` list, so a Frontier radio needs no different setup from an AVR:
+point that domain at Retuner and set the radio's DNS to it.
+`script/smoke-test.sh` asserts the deeper path so it cannot regress unnoticed.
+
+`*.frontier-nuvola.net` is deliberately **not** intercepted — that is the live
+successor service, and hijacking something that still works would break it.
+
+> **Not yet confirmed on hardware.** The protocol entry points match and are
+> tested; the full browse flow on a real Frontier radio is unverified. If you
+> have one, please report what happens — that is exactly the feedback this
+> section needs.
+
 ## Installation
 YTuner is a standalone application and in most cases it does not require additional services, frameworks, packages, virtual machines, libraries or tools to run properly (except optional OpenSSL and/or SQLite3 libraries).
 You can download from [Releases](https://github.com/coffeegreg/YTuner/releases) a file specific to your operating system and CPU architecture or build YTuner from source (look at [Build](README.md#build) section).
@@ -225,6 +254,7 @@ YTuner has a built-in multi-threaded web server that listens on TCP port 80 so y
 YTuner has a built-in multi-threaded DNS server that listens on UDP port 53. This feature is optional and you can simple disable it and/or configure by editing configuration .ini file `ytuner.ini` (See [Application configuration](README.md#application-configuration) section below).
 You can also use your favorite DNS server like `dnsmasq`.  
 ***Most important is to point `*.vtuner.com` domain to you YTuner machine and set all DNS servers on your AVR config to your YTuner machine IP address.***  
+>For a Frontier Silicon radio, redirect `*.wifiradiofrontier.com` instead — see [Frontier Silicon radios](README.md#frontier-silicon-radios) below.
 >Tip: In some special cases, it may be necessary to change the default UDP port 53 to another. You can do this by editing the YTuner ini file. See [Application configuration](README.md#application-configuration) section below.
 
 ### YTuner Maintenance Service

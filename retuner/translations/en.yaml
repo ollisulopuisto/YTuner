@@ -44,11 +44,12 @@ configuration:
   dns_service:
     name: Run the DNS service
     description: >-
-      Retuner's own DNS server, which answers the vTuner hostname your receiver
-      asks for. Leave this off if you already redirect *.vtuner.com at your
-      router, Pi-hole or AdGuard — that is the tidier route. Note that port 53
-      is often already taken on a Home Assistant machine, in which case one of
-      the two will fail to start.
+      Retuner's own DNS server, which answers the hostname your receiver asks
+      for — vTuner's for an AVR, wifiradiofrontier.com for a Frontier Silicon
+      table radio. Leave this off if you already redirect those at your router,
+      Pi-hole or AdGuard — that is the tidier route. Note that port 53 is often
+      already taken on a Home Assistant machine, in which case one of the two
+      will fail to start.
   dns_port:
     name: DNS port
     description: Only opened when the DNS service above is on.
