@@ -290,6 +290,9 @@ Simply execute `ytuner.exe`.
 ### Docker container
 If you are not familiar with building Docker containers you can read [this](doc/DOCKER.md).
 
+### Remote hosting (VPS)
+YTuner does not have to run on the same LAN as your AVR — a VPS such as an Oracle Free Tier instance works. The built-in DNS service is the one part that does not, because behind NAT it answers with the private address; redirect `*.vtuner.com` on your own network instead. See [doc/REMOTE-HOSTING.md](doc/REMOTE-HOSTING.md) for the full setup, the Oracle-specific firewall trap, and which options put audio through the VPS.
+
 ## Build
 You can use [Lazarus Free Pascal RAD IDE](https://www.lazarus-ide.org/) to build YTuner. 
 Use the latest versions of IDE and FPC. Relevant project file is included.
