@@ -129,6 +129,7 @@ function GetCategoryItems(var ARBCategories: TRBCategories; ARBCategoryType: TRB
 function GetStationsByCategory(var ARBStations: TRBStations; ARBAllCategoryType: TRBAllCategoryTypes; AName: string; AReq: TRequest): integer;
 function GetStationsByCategory(var ARBStations: TRBStations; ARBAllCategoryType: TRBAllCategoryTypes; AName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
 procedure GetRBStationByID(var ARBStation: TRBStation; AID: string; AAVRConfigIdx: integer);
+function JSONFieldStr(AJSONObject: TJSONObject; const AName: string): string;
 procedure SetRBCategory(var ARBCategory: TRBCategory; ARBCategoryJSONObject: TJSONObject);
 procedure SetRBStation(var ARBStation: TRBStation; ARBStationJSONObject: TJSONObject);
 function LoadRBStationsUUIDs: boolean;
@@ -229,31 +230,55 @@ begin
   Result:=GetJSON(RadiobrowserAPIRequest(AURL));
 end;
 
+// TJSONObject.Get returns Null for a field that is not present, and assigning
+// Null to a string raises "Could not convert variant of type (Null) into type
+// (String)". That exception escapes GetStationsByCategory, so a single station
+// missing a single field costs the whole category: the AVR is shown
+// "No station(s) found" for an entire country. One absent field should cost
+// that one value and nothing else.
+//
+// Radio-browser sends every one of these today. Mirrors, a schema change, or a
+// partial record are all reasons not to depend on that.
+function JSONFieldStr(AJSONObject: TJSONObject; const AName: string): string;
+var
+  LNode: TJSONData;
+begin
+  Result:='';
+  if not Assigned(AJSONObject) then
+    Exit;
+  LNode:=AJSONObject.Find(AName);
+  if Assigned(LNode) and (LNode.JSONType<>jtNull) then
+    Result:=LNode.AsString;
+end;
+
 procedure SetRBCategory(var ARBCategory: TRBCategory; ARBCategoryJSONObject: TJSONObject);
 begin
-  with ARBCategory, ARBCategoryJSONObject do
+  with ARBCategory do
     begin
-      RBCName:=StripChars(Get(API_ATTR_NAME),RB_JSON_STRIP_CHARS);
-      RBCMaxCount:=Get(API_ATTR_STATIONCOUNT);
+      RBCName:=StripChars(JSONFieldStr(ARBCategoryJSONObject,API_ATTR_NAME),RB_JSON_STRIP_CHARS);
+// An integer, so it needs converting rather than assigning: the Variant this
+// used to go through did that implicitly, and would also have raised on a
+// missing field. A category with no stationcount now reads as zero.
+      RBCMaxCount:=StrToIntDef(JSONFieldStr(ARBCategoryJSONObject,API_ATTR_STATIONCOUNT),0);
     end;
 end;
 
 procedure SetRBStation(var ARBStation: TRBStation; ARBStationJSONObject: TJSONObject);
 begin
-  with ARBStation, ARBStationJSONObject do
+  with ARBStation do
     begin
-      RBSID:=Get(API_ATTR_STATIONUUID);
-      RBSName:=StripChars(Get(API_ATTR_NAME),RB_JSON_STRIP_CHARS);
-      RBSHomePageURL:=Get(API_ATTR_HOMEPAGE);
-      RBSURL:=Get(API_ATTR_URL);
-      RBSIcon:=Get(API_ATTR_FAVICON);
-      RBSTags:=StripChars(Get(API_ATTR_TAGS),RB_JSON_STRIP_CHARS);
-      RBSCountry:=StripChars(Get(API_ATTR_COUNTRY),RB_JSON_STRIP_CHARS);
-      RBSCountryCode:=Get(API_ATTR_COUNTRYCODE);
-      RBSLanguage:=StripChars(Get(API_ATTR_LANGUAGE),RB_JSON_STRIP_CHARS);
-      RBSVotes:=Get(API_ATTR_VOTES);
-      RBSCodec:=Get(API_ATTR_CODEC);
-      RBSBitrate:=Get(API_ATTR_BITRATE);
+      RBSID:=JSONFieldStr(ARBStationJSONObject,API_ATTR_STATIONUUID);
+      RBSName:=StripChars(JSONFieldStr(ARBStationJSONObject,API_ATTR_NAME),RB_JSON_STRIP_CHARS);
+      RBSHomePageURL:=JSONFieldStr(ARBStationJSONObject,API_ATTR_HOMEPAGE);
+      RBSURL:=JSONFieldStr(ARBStationJSONObject,API_ATTR_URL);
+      RBSIcon:=JSONFieldStr(ARBStationJSONObject,API_ATTR_FAVICON);
+      RBSTags:=StripChars(JSONFieldStr(ARBStationJSONObject,API_ATTR_TAGS),RB_JSON_STRIP_CHARS);
+      RBSCountry:=StripChars(JSONFieldStr(ARBStationJSONObject,API_ATTR_COUNTRY),RB_JSON_STRIP_CHARS);
+      RBSCountryCode:=JSONFieldStr(ARBStationJSONObject,API_ATTR_COUNTRYCODE);
+      RBSLanguage:=StripChars(JSONFieldStr(ARBStationJSONObject,API_ATTR_LANGUAGE),RB_JSON_STRIP_CHARS);
+      RBSVotes:=JSONFieldStr(ARBStationJSONObject,API_ATTR_VOTES);
+      RBSCodec:=JSONFieldStr(ARBStationJSONObject,API_ATTR_CODEC);
+      RBSBitrate:=JSONFieldStr(ARBStationJSONObject,API_ATTR_BITRATE);
     end;
 end;
 
