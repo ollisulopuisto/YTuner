@@ -25,10 +25,16 @@ jobs:
             target: x86_64-linux
           - os: macos-latest
             target: aarch64-darwin
-          - os: macos-13
+          # macos-13 was never scheduled - the label has been retired, and a job
+          # asking for it queues for ever rather than failing. macos-15-intel is
+          # its replacement.
+          - os: macos-15-intel
             target: x86_64-darwin
+          # Named for the platform, not the architecture: chocolatey's package
+          # is the 32-bit compiler, so this produces i386-win32 today. What the
+          # artifact is called comes from the compiler either way.
           - os: windows-latest
-            target: x86_64-win64
+            target: windows
     defaults:
       run:
         shell: bash
