@@ -74,6 +74,27 @@ jobs:
           if (-not $fpc) { throw "fpc.exe not found after install" }
           Write-Host "found: $($fpc.FullName)"
           Add-Content -Path $env:GITHUB_PATH -Value $fpc.DirectoryName
+          # bin\<target>\fpc.exe, so the installation root is two levels up.
+          $root = Split-Path (Split-Path $fpc.DirectoryName -Parent) -Parent
+          Add-Content -Path $env:GITHUB_ENV -Value "FPC_BIN=$($fpc.DirectoryName)"
+          Add-Content -Path $env:GITHUB_ENV -Value "FPC_ROOT=$root"
+
+      # The package installs a compiler and no configuration, so fpc cannot find
+      # its own RTL: the first thing it compiles fails with "Can't find unit
+      # StrUtils", which reads like a missing dependency and is really a missing
+      # -Fu line. fpcmkcfg writes the file the installer would have.
+      - name: Configure the compiler (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "root: $FPC_ROOT"
+          ls "$FPC_ROOT" || true
+          if [ ! -f "$FPC_BIN/fpc.cfg" ]; then
+            fpcmkcfg -d "basepath=$FPC_ROOT" -o "$FPC_BIN/fpc.cfg"
+            echo "--- generated fpc.cfg (unit paths):"
+            grep -i '^-Fu' "$FPC_BIN/fpc.cfg" || true
+          else
+            echo "fpc.cfg already present"
+          fi
 
       - name: LazUtils sources (macOS and Windows)
         if: runner.os != 'Linux'
