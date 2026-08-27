@@ -69,7 +69,9 @@ begin
   with FServer do
     begin
       Active:=False;
-//      Address:=MaintenanceServerIPAddress;   //New Trunk FPC only!
+{$IF FPC_FULLVERSION >= 30300}
+      Address:=MaintenanceServerIPAddress;
+{$ENDIF}
       Port:=MaintenanceServerPort;
 {$IF FPC_FULLVERSION >= 30300}
       ThreadMode:=tmNone;
@@ -83,15 +85,26 @@ end;
 
 procedure TMaintenaceHTTPServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
 begin
-  if ARequest.Host.StartsWith(MaintenanceServerIPAddress) then    //Unnecessary with TFPHTTPServer.Address setting. (New Trunk FPC only!)
+// Host is a caller-supplied header, so it proved nothing about where the
+// request came from: anyone on the network could stop YTuner by sending
+// "Host: 127.0.0.1". Older FPC has no TFPHTTPServer.Address to bind with, so
+// authorise on the peer address instead.
+  if ARequest.RemoteAddress<>MaintenanceServerIPAddress then
     begin
-      ServerResponse(HTTP_CODE_OK,ctNone,AResponse,string.Join(': ',[APP_NAME+' '+MSG_SERVICE,MSG_SHUTTING_DOWN+'...']));
-      case ARequest.URI.ToLower of
-        '/'+PATH_ROOT+'/down' : YTunerServiceDown(Sender);
+      Logging(ltWarning, string.Join(' ',[MAINTENANCE_SERVICE+':','rejected',ARequest.URI,'from',ARequest.RemoteAddress]));
+      ServerResponse(HTTP_CODE_UNAVAILABLE,ctNone,AResponse,'Service unavailable.');
+      Exit;
+    end;
+  case ARequest.URI.ToLower of
+    '/'+PATH_ROOT+'/down':
+      begin
+        ServerResponse(HTTP_CODE_OK,ctNone,AResponse,string.Join(': ',[APP_NAME+' '+MSG_SERVICE,MSG_SHUTTING_DOWN+'...']));
+        YTunerServiceDown(Sender);
       end;
-    end
   else
-    ServerResponse(HTTP_CODE_UNAVAILABLE,ctNone,AResponse,'Service unavailable.');
+// Every other URI used to be answered with "Shutting down..." as well.
+    ServerResponse(HTTP_CODE_NOT_FOUND,ctNone,AResponse,'');
+  end;
 end;
 
 procedure DNSServiceDown;
@@ -109,37 +122,32 @@ begin
     end;
 end;
 
+// A timer created suspended has to be started before it can be waited on, or
+// TerminateTimer's WaitFor would block on a thread that never ran.
+procedure ThreadTimerDown(var AThread: TThreadTimer);
+begin
+  if Assigned(AThread) then
+    begin
+      if AThread.Suspended then
+        AThread.Start;
+      AThread.TerminateTimer;
+      FreeAndNil(AThread);
+    end;
+end;
+
 procedure MSThreadTimerDown;
 begin
-  if Assigned(MSThread) then
-    with MSThread do
-      begin
-        if Suspended then
-          Start;
-        TerminateTimer;
-      end;
+  ThreadTimerDown(MSThread);
 end;
 
 procedure RBThreadTimerDown;
 begin
-  if Assigned(RBThread) then
-    with RBThread do
-      begin
-        if Suspended then
-          Start;
-        TerminateTimer;
-      end;
+  ThreadTimerDown(RBThread);
 end;
 
 procedure GTThreadTimerDown;
 begin
-  if Assigned(GTThread) then
-    with GTThread do
-      begin
-        if Suspended then
-          Start;
-        TerminateTimer;
-      end;
+  ThreadTimerDown(GTThread);
 end;
 
 procedure YTunerServiceDown(Sender: TObject);

@@ -32,8 +32,11 @@ type
     property Needed: Boolean read FNeeded write FNeeded;
     procedure StopTimer;
     procedure StartTimer;
+// Stops the timer and waits for the worker to finish. The caller owns the
+// object afterwards and must free it.
     procedure TerminateTimer;
     constructor Create(AName: string);
+    destructor Destroy; override;
   end;
 
 const
@@ -53,10 +56,18 @@ begin
   FName:=AName;
   FEvent:=TEventObject.Create(nil,True,False,AName);
   FInterval:=1000;
-  FreeOnTerminate:=True;
+// Not FreeOnTerminate: shutdown waits for the worker to leave Execute before
+// anything is released, so the event cannot be freed underneath it.
+  FreeOnTerminate:=False;
   FEnabled:=False;
   FProcessing:=False;
   FNeeded:=False;
+end;
+
+destructor TThreadTimer.Destroy;
+begin
+  FreeAndNil(FEvent);
+  inherited Destroy;
 end;
 
 procedure TThreadTimer.DoOnTimer;
@@ -69,18 +80,12 @@ procedure TThreadTimer.Execute;
 begin
   while not Terminated do
     begin
-      if Assigned(FEvent) then
-        FEvent.WaitFor(FInterval);
+      FEvent.WaitFor(FInterval);
       if Terminated then
-        begin
-          if Assigned(FEvent) then
-            FEvent.Free;
-          Break;
-        end;
+        Break;
       if FEnabled and (not FProcessing) then
         DoOnTimer;
-      if Assigned(FEvent) then
-        FEvent.ResetEvent;
+      FEvent.ResetEvent;
     end;
 end;
 
@@ -99,15 +104,12 @@ end;
 procedure TThreadTimer.TerminateTimer;
 begin
   FEnabled:=False;
-  if Assigned(FEvent) then
-    begin
-      FEvent.SetEvent;
-      FEvent.Free;
-      FEvent:=nil;
-    end;
   OnTerminate:=nil;
+// Terminated must be set before the worker is woken, otherwise it goes round
+// the loop once more and the wake-up is lost.
   Terminate;
-//  WaitFor;
+  FEvent.SetEvent;
+  WaitFor;
 end;
 
 end.
