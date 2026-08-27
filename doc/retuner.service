@@ -1,0 +1,52 @@
+[Unit]
+Description=Retuner - internet radio for AV receivers whose vTuner service shut down
+Documentation=https://github.com/ollisulopuisto/retuner/blob/master/doc/STANDALONE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=retuner
+Group=retuner
+WorkingDirectory=/opt/retuner
+ExecStart=/opt/retuner/retuner
+Restart=on-failure
+RestartSec=5
+
+# The receiver's firmware asks for port 80 and Retuner advertises every station
+# URL without a port, so 80 is not negotiable. This grants that one port rather
+# than running the whole thing as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+
+# A station logo URL is chosen by whoever submitted the station, and the image
+# is decoded in this process. Everything below is about what that decoder can
+# reach if a file ever talks it into something - see script/fuzz-test.sh, which
+# exists because two such files could already do damage.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# AF_UNIX is the journal socket stdout is written to. AF_NETLINK is not
+# optional either: "default" for IPAddress, WebServerIPAddress and ActAsHost is
+# resolved through Indy's GetLocalAddressList, which is getifaddrs(), which
+# enumerates interfaces over a netlink socket. Leave it out and every "default"
+# resolves to nothing - strace shows three netlink sockets on a plain start.
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+ReadWritePaths=/opt/retuner
+
+# An icon may claim up to 16 megapixels, which is 128 MB decoded, and serving
+# radio otherwise costs about 8 MB. This is the backstop for the case the
+# in-process ceiling misses, not the working figure.
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

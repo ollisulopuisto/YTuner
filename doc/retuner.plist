@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.ollisulopuisto.retuner</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/retuner/retuner</string>
+  </array>
+
+  <!-- Retuner reads retuner.ini from the directory it runs in, and writes its
+       cache and config beside it. -->
+  <key>WorkingDirectory</key>
+  <string>/usr/local/retuner</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- A daemon in /Library/LaunchDaemons runs as root, which is what binding
+       port 80 needs and what the receiver's firmware leaves no choice about.
+       See doc/MACOS.md for the unprivileged alternative. -->
+  <key>StandardOutPath</key>
+  <string>/usr/local/retuner/retuner.log</string>
+  <key>StandardErrorPath</key>
+  <string>/usr/local/retuner/retuner.log</string>
+</dict>
+</plist>
