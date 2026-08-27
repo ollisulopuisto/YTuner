@@ -220,6 +220,16 @@ var
                 LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_BOOKMARK,GetBookmarkItemsCount(AReq.QueryFields.Values[PATH_PARAM_MAC]),-1));
                 LIdx:=LIdx+1;
               end;
+// Skips the country level of Radio Browser and lands directly on the stations
+// of the configured country. Nothing to show if no country is set.
+          AVR_MAINMENU_IDENTIFIER_LOCAL:
+            if RadiobrowserEnabled and (not LocalCountry.IsEmpty) then
+              begin
+                LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,
+                            PATH_ROOT+'/'+PATH_RADIOBROWSER+'/'+PATH_RADIOBROWSER_COUNTRY+'/'+URLEncode(LocalCountry),
+                            RBPopularAndSearchStationsLimit,-1));
+                LIdx:=LIdx+1;
+              end;
           AVR_MAINMENU_IDENTIFIER_ABOUT:
             begin
               LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_ABOUT,2,-1));

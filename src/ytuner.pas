@@ -144,6 +144,10 @@ begin
         WriteString(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,'0');
       ResolvePlaylists:=ReadBool(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,False);
 
+      if not ValueExists(INI_CONFIGURATION,INI_LOCAL_COUNTRY) then
+        WriteString(INI_CONFIGURATION,INI_LOCAL_COUNTRY,'');
+      LocalCountry:=ReadString(INI_CONFIGURATION,INI_LOCAL_COUNTRY,'').Trim;
+
       if not ValueExists(INI_CONFIGURATION,INI_RELAY_HTTPS) then
         WriteString(INI_CONFIGURATION,INI_RELAY_HTTPS,'0');
       RelayHTTPS:=ReadBool(INI_CONFIGURATION,INI_RELAY_HTTPS,False);

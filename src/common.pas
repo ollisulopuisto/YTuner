@@ -87,6 +87,7 @@ const
   INI_ACT_AS_HOST = 'ActAsHost';
   INI_USE_SSL = 'UseSSL';
   INI_RESOLVE_PLAYLISTS = 'ResolvePlaylists';
+  INI_LOCAL_COUNTRY = 'LocalCountry';
   INI_RELAY_HTTPS = 'RelayHTTPS';
   INI_RELAY_PORT = 'RelayPort';
   INI_REDIRECT_HTTP_CODE = 'RedirectHTTPCode';
@@ -208,6 +209,9 @@ var
   MyAppPath: string;
   UseSSL: boolean = True;
   ResolvePlaylists: boolean = False;
+// Country whose stations the "local" main-menu entry jumps straight to.
+// Empty means the entry is skipped entirely.
+  LocalCountry: string = '';
   CachePath: string = DEFAULT_STRING;
   ConfigPath: string = DEFAULT_STRING;
   DBPath: string = DEFAULT_STRING;
