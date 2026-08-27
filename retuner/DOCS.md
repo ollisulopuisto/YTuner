@@ -134,6 +134,11 @@ holds the things you curate:
 
   Written with an example the first time podcasts are switched on.
 
+- **`presets/<code>.ini`** — the country lists Retuner fetched, one file per
+  country you enabled. These are **downloaded, not yours**: they are replaced
+  whenever a fetch succeeds, so edit `stations.ini` instead if you want a change
+  to stick. They are kept so a failed fetch still leaves you with a menu.
+
 - **`avr.ini`** — per-receiver settings: which entries the main menu has,
   and filters for the Radio Browser directory. Written with sensible defaults
   on first start.
@@ -146,6 +151,21 @@ starts**, so editing it does nothing. Change the options instead, or use
 
 Caches and the station database live in the add-on's private storage and can be
 thrown away safely; they rebuild themselves.
+
+## Country presets
+
+Turn on **Country presets** and set **Preset countries** to one or more
+two-letter codes (`fi`, or `fi,se`). On start, Retuner fetches a curated list
+for each and merges it into **My stations**, so the receiver has something worth
+playing before you have written a station file.
+
+Your own `stations.ini` is loaded first and always wins: a category that appears
+in both is merged rather than duplicated, and a station you already have is not
+added twice. A preset can never overwrite anything of yours.
+
+If a fetch fails, the copy from last time is used and the log says so — the
+failure names the URL and the reason. Which lists exist, and how to contribute
+one, is in the `presets/` folder of the Retuner repository.
 
 ## Security
 

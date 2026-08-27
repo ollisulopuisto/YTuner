@@ -22,7 +22,7 @@ uses
   {$IFDEF USESSL}
   openssl, opensslsockets,
   {$ENDIF}
-  regexpr, my_stations, podcasts, vtuner, httpserver, radiobrowser, common, bookmark,
+  regexpr, my_stations, podcasts, presets, vtuner, httpserver, radiobrowser, common, bookmark,
   dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui;
 
 // {$DEFINE FREE_ON_FINAL}
@@ -51,33 +51,23 @@ begin
   BeginThread(@DBRBPrepareThread);
 end;
 
-function ReadMyStations: boolean;
-begin
-  case IndexStr(ExtractFileExt(ConfigPath+DirectorySeparator+MyStationsFileName),MY_STATIONS_EXT) of
-    0: Result:=ReadMyStationsINIFile(ConfigPath+DirectorySeparator+MyStationsFileName);
-    1,2: Result:=ReadMyStationsYAMLFile(ConfigPath+DirectorySeparator+MyStationsFileName);
-  else
-    Result:=False;
-  end;
-end;
-
 function CheckMyStationsThread(AP:Pointer):PtrInt;
 var
   LMyStationsFileAge: Int64;
   LMyStationsFileCRC32: Cardinal;
 begin
   try
-    if (AnsiMatchText(ExtractFileExt(ConfigPath+DirectorySeparator+MyStationsFileName),MY_STATIONS_EXT)) then
+    if (AnsiMatchText(ExtractFileExt(MyStationsFilePath),MY_STATIONS_EXT)) then
       begin
-        LMyStationsFileAge:=FileAge(ConfigPath+DirectorySeparator+MyStationsFileName);
+        LMyStationsFileAge:=FileAge(MyStationsFilePath);
         if MyStationsFileAge<>LMyStationsFileAge then
           begin
-            LMyStationsFileCRC32:=CalcFileCRC32(ConfigPath+DirectorySeparator+MyStationsFileName);
+            LMyStationsFileCRC32:=CalcFileCRC32(MyStationsFilePath);
             if MyStationsFileCRC32<>LMyStationsFileCRC32 then
               begin
                 if (MyStationsFileAge<>0) and (MyStationsFileCRC32<>0) then
                   Logging(ltInfo, '"My Stations" file has been changed. Refreshing..');
-                if ReadMyStations then
+                if ReloadStations then
                   begin
                     MyStationsFileAge:=LMyStationsFileAge;
                     MyStationsFileCRC32:=LMyStationsFileCRC32;
@@ -96,6 +86,26 @@ end;
 procedure MyStationsRefreshOnTimer(Sender: TObject);
 begin
   BeginThread(@CheckMyStationsThread);
+end;
+
+// Fetching is network work and must not sit on the timer thread. A refresh that
+// changes nothing still ends in ReloadStations, which is cheap and keeps the
+// published list correct if a preset file was edited by hand in the cache.
+function RefreshPresetsThread(AP:Pointer):PtrInt;
+begin
+  Result:=0;
+  try
+    RefreshPresets;
+    ReloadStations;
+  except
+    on E:Exception do
+      Logging(ltError, 'RefreshPresetsThread Error: '+E.Message);
+  end;
+end;
+
+procedure PresetsRefreshOnTimer(Sender: TObject);
+begin
+  BeginThread(@RefreshPresetsThread);
 end;
 
 procedure ReadINIConfiguration;
@@ -240,6 +250,24 @@ begin
       if not ValueExists(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD) then
         WriteInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
       MyStationsAutoRefreshPeriod:=ReadInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
+
+      if not ValueExists(INI_PRESETS,INI_ENABLE) then
+        WriteString(INI_PRESETS,INI_ENABLE,'0');
+      PresetsEnabled:=ReadBool(INI_PRESETS,INI_ENABLE,False);
+
+      if not ValueExists(INI_PRESETS,INI_PRESETS_COUNTRIES) then
+        WriteString(INI_PRESETS,INI_PRESETS_COUNTRIES,DEFAULT_STRING);
+      PresetsCountries:=ReadString(INI_PRESETS,INI_PRESETS_COUNTRIES,DEFAULT_STRING);
+      if PresetsCountries=DEFAULT_STRING then
+        PresetsCountries:='';
+
+      if not ValueExists(INI_PRESETS,INI_PRESETS_URL) then
+        WriteString(INI_PRESETS,INI_PRESETS_URL,PRESETS_DEFAULT_URL);
+      PresetsURL:=ReadString(INI_PRESETS,INI_PRESETS_URL,PRESETS_DEFAULT_URL);
+
+      if not ValueExists(INI_PRESETS,INI_PRESETS_AUTO_REFRESH_PERIOD) then
+        WriteInteger(INI_PRESETS,INI_PRESETS_AUTO_REFRESH_PERIOD,0);
+      PresetsAutoRefreshPeriod:=ReadInteger(INI_PRESETS,INI_PRESETS_AUTO_REFRESH_PERIOD,0);
 
       if not ValueExists(INI_PODCASTS,INI_ENABLE) then
         WriteString(INI_PODCASTS,INI_ENABLE,'0');
@@ -447,6 +475,13 @@ begin
   if UseSSL then InitSSLInterface;
   {$ENDIF USESSL}
 
+// Before the first station load, so a fresh install serves presets in its very
+// first menu rather than only after a restart. This is the one place the fetch
+// is synchronous: it is startup, nothing is serving yet, and the HTTP client
+// has its own connect and read timeouts.
+  if PresetsEnabled then
+    RefreshPresets;
+
   if MyStationsEnabled then
     CheckMyStationsThread(nil);
 
@@ -528,6 +563,17 @@ begin
         begin
           Interval:=MyStationsAutoRefreshPeriod*60000;
           OnTimer:=@MyStationsRefreshOnTimer;
+          StartTimer;
+        end;
+    end;
+
+  if PresetsEnabled and (PresetsAutoRefreshPeriod>0) then
+    begin
+      PSThread:=TThreadTimer.Create(PS_THREAD);
+      with PSThread do
+        begin
+          Interval:=PresetsAutoRefreshPeriod*60000;
+          OnTimer:=@PresetsRefreshOnTimer;
           StartTimer;
         end;
     end;

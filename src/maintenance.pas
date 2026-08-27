@@ -140,6 +140,11 @@ begin
   ThreadTimerDown(MSThread);
 end;
 
+procedure PSThreadTimerDown;
+begin
+  ThreadTimerDown(PSThread);
+end;
+
 procedure RBThreadTimerDown;
 begin
   ThreadTimerDown(RBThread);
@@ -181,6 +186,14 @@ begin
         MSThreadTimerDown;
       except end;
       Logging(ltInfo,string.Join(': ',[MS_THREAD,MSG_DONE]));
+    end;
+  if Assigned(PSThread) then
+    begin
+      Logging(ltInfo,string.Join(': ',[PS_THREAD,MSG_SHUTTING_DOWN]));
+      try
+        PSThreadTimerDown;
+      except end;
+      Logging(ltInfo,string.Join(': ',[PS_THREAD,MSG_DONE]));
     end;
   if Assigned(GTThread) then
     begin

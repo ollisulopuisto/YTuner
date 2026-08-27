@@ -60,11 +60,6 @@ var
 
 // --- station file I/O --------------------------------------------------------
 
-function MyStationsFilePath: string;
-begin
-  Result:=ConfigPath+DirectorySeparator+MyStationsFileName;
-end;
-
 function MyStationsIsYAML: boolean;
 begin
   Result:=not SameText(ExtractFileExt(MyStationsFilePath),'.ini');
@@ -214,8 +209,10 @@ begin
       LData.Free;
   end;
 // Publish the new list immediately rather than waiting for the refresh timer,
-// which may not even be enabled.
-  if not ReadMyStationsINIFile(MyStationsFilePath) then
+// which may not even be enabled. This rebuilds from every source, not just the
+// file that was saved -- reloading the user's file alone would drop every
+// preset station until the next restart.
+  if not ReloadStations then
     Result:='Saved, but the file could not be re-read. Check the log.';
 end;
 

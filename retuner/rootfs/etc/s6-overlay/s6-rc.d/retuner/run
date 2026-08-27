@@ -89,6 +89,10 @@ fi
     echo "Enable=$(bool 'my_stations')"
     echo "MyStationsFile=stations.ini"
     echo
+    echo "[Presets]"
+    echo "Enable=$(bool 'presets')"
+    echo "PresetsCountries=$(bashio::config 'preset_countries')"
+    echo
     echo "[Podcasts]"
     echo "Enable=$(bool 'podcasts')"
     echo "PodcastsFile=podcasts.ini"

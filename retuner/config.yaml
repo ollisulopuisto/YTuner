@@ -1,5 +1,5 @@
 name: Retuner
-version: "0.2.0"
+version: "0.3.0"
 slug: retuner
 description: Brings internet radio back to AV receivers whose vTuner service was shut down
 url: "https://github.com/ollisulopuisto/retuner/tree/master/retuner"
@@ -29,6 +29,8 @@ options:
   radiobrowser: true
   cache_type: catMemStr
   my_stations: true
+  presets: false
+  preset_countries: ""
   podcasts: false
   podcast_episodes_limit: 100
   bookmarks: true
@@ -53,6 +55,8 @@ schema:
   radiobrowser: "bool"
   cache_type: "list(catNone|catFile|catMemStr|catDB|catMemDB|catPermMemDB)"
   my_stations: "bool"
+  presets: "bool"
+  preset_countries: "str?"
   podcasts: "bool"
   podcast_episodes_limit: "int(1,500)"
   bookmarks: "bool"
