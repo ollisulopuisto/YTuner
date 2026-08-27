@@ -353,8 +353,11 @@ begin
   with TFileStream.Create(AFileName, fmOpenRead or fmShareDenyNone) do
     try
       SetLength(Buffer, Size);
-      Read(Buffer,Size);
-      Result:=CRC32(Result,@Buffer[0],Size);
+      if Length(Buffer)>0 then
+        begin
+          ReadBuffer(Buffer[0],Length(Buffer));
+          Result:=CRC32(Result,@Buffer[0],Length(Buffer));
+        end;
     finally
       Free;
     end;

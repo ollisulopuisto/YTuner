@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [ master, 'claude/**' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc \
+            lazarus-src zip
+
+      - name: Cache Indy checkout
+        uses: actions/cache@v4
+        with:
+          path: .build/indy
+          key: indy-${{ runner.os }}-1
+
+      - name: Build
+        run: ./script/build.sh
+
+      - name: Smoke test
+        run: ./script/smoke-test.sh
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ytuner-linux-x86_64
+          path: bin/x86_64-linux/ytuner
+          if-no-files-found: error

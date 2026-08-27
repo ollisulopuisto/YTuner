@@ -292,6 +292,19 @@ If you are not familiar with building Docker containers you can read [this](doc/
 You can use [Lazarus Free Pascal RAD IDE](https://www.lazarus-ide.org/) to build YTuner. 
 Use the latest versions of IDE and FPC. Relevant project file is included.
 
+### Building on Linux without Lazarus
+`script/build.sh` builds YTuner with the plain Free Pascal compiler, so no IDE is required. It fetches Indy on first run, packs the embedded SQL resources and writes the binary to `bin/<cpu>-<os>/ytuner`:
+
+```
+sudo apt install fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc lazarus-src zip git
+./script/build.sh
+./script/smoke-test.sh
+```
+
+`smoke-test.sh` starts the freshly built binary against a throwaway config and checks that the endpoints an AVR hits first still answer. Both scripts run in CI on every push (see `.github/workflows/build.yml`).
+
+Set `DEBUG=1` for an unoptimised build with debug information, or `INDY_DIR` / `LAZUTILS_DIR` if you keep those sources somewhere of your own.
+
 ### Dependencies
 YTuner uses [Indy - Internet Direct](https://github.com/IndySockets/Indy) library to build its own binary files. Of course, YTuner binaries no longer need any additional libraries beyond the optional OpenSSL and/or SQLite3.
 >Important: Use the latest version of Indy library to build YTuner.

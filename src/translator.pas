@@ -80,7 +80,7 @@ begin
       LUnicode:=UTF8CodepointToUnicode(LPointer,LCPLen);
       if LCPLen=2 then
         with AVRConfigArray[ATranslatorIdx].Translator do
-          case Integer(LUnicode.Words[0]) of
+          case Integer(LUnicode and $FFFF) of
             UTF8LATIN1SUPPLEMENT_LOW..UTF8LATIN1SUPPLEMENT_HIGH: Result:=Result+IfThen(ReplaceUTF8Latin1Supplement,UTF8Latin1Supplement[LUnicode],AUTF8String.Substring(LIdx,LCPLen));
             UTF8LATIN1EXTENDEDA_LOW..UTF8LATIN1EXTENDEDA_HIGH: Result:=Result+IfThen(ReplaceUTF8Latin1ExtendedA,UTF8Latin1ExtendedA[LUnicode],AUTF8String.Substring(LIdx,LCPLen));
             UTF8LATIN1EXTENDEDB_LOW..UTF8LATIN1EXTENDEDB_HIGH: Result:=Result+IfThen(ReplaceUTF8Latin1ExtendedB,UTF8Latin1ExtendedB[LUnicode],AUTF8String.Substring(LIdx,LCPLen));
@@ -326,6 +326,7 @@ var
   LFileName: string;
   LFileHandle: THandle;
   LLastCharCode: Byte = 0;
+  LLineEnding: string = LineEnding;
 begin
   LFileName:=ConfigPath+DirectorySeparator+'translator-'+AVRMACsArray[ATranslatorIdx]+'.txt';
   Result:=True;
@@ -343,7 +344,7 @@ begin
                 begin
                   FileRead(LFileHandle,LLastCharCode,1);
                   if LLastCharCode<>10 then
-                    FileWrite(LFileHandle,String(LineEnding),Length(LineEnding));
+                    FileWrite(LFileHandle,LLineEnding[1],Length(LLineEnding));
                 end;
             end;
           FileSeek(LFileHandle,0,fsFromEnd);

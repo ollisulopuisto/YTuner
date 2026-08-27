@@ -1,0 +1,24 @@
+# SQL resources embedded via res/sql.rc — generated from src/sql/*.sql
+# (script/zip-sql.bat on Windows, script/zip-sql.sh elsewhere)
+res/*.zip
+
+# Build output
+.build/
+bin/
+lib/
+*.o
+*.or
+*.ppu
+*.a
+*.compiled
+*.res
+backup/
+
+# Lazarus per-user session state
+*.lps
+
+# Runtime directories created next to the binary
+/cache/
+/config/
+/db/
+heap.trc
