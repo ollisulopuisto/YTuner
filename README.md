@@ -290,6 +290,9 @@ Simply execute `ytuner.exe`.
 ### Docker container
 If you are not familiar with building Docker containers you can read [this](doc/DOCKER.md).
 
+### Podcasts
+Set `Enable=1` in the `[Podcasts]` section of `ytuner.ini` and list feeds in `podcasts.ini` (same shape as `stations.ini`: `Name=feed URL`, with an optional `|artwork URL`). Each feed becomes a folder and each episode a station, so the AVR browses and plays them the way it does radio — nothing in the firmware has to understand podcasts. Episode enclosures are very often HTTPS-only, which these AVRs cannot fetch at all, so `RelayHTTPS=1` is usually wanted alongside it.
+
 ### Home Assistant add-on
 `retuner/` packages this as a Home Assistant add-on. Add `https://github.com/ollisulopuisto/YTuner` under Settings → Add-ons → Add-on store → ⋮ → Repositories, then install **Retuner**. The settings are exposed as add-on options and your station files live in the add-on's configuration folder. See [retuner/DOCS.md](retuner/DOCS.md) for the options, how to point the receiver at it, and the port-conflict traps on a Home Assistant machine.
 

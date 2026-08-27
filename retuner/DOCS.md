@@ -73,6 +73,20 @@ which wants a few hundred MB and real CPU. On a Pi, stay with `catMemStr`.
 **`my_stations`** — your own station list, kept in `stations.ini` in the add-on's
 configuration folder. An example is written there on first start.
 
+**`podcasts`** / **`podcast_episodes_limit`** — off by default. Feeds are listed
+in `podcasts.ini` in the configuration folder, and an example is written there
+the first time you switch this on. Each feed becomes a folder and each episode a
+station, so the receiver browses and plays them the way it does radio.
+
+Turn **`relay_https` on as well**. Podcast episodes are very often HTTPS-only,
+and these receivers have no TLS, so without the relay the episodes will list and
+then refuse to play. The add-on says so in its log if you enable one without the
+other.
+
+`podcast_episodes_limit` is how many episodes of a feed to offer, newest first.
+A long-running weekly show can carry a decade of back catalogue, which is a lot
+of jog dial.
+
 **`bookmarks`** — lets the receiver save favourites with its own remote, if it
 supports that.
 
@@ -110,6 +124,15 @@ holds the things you curate:
   ```
 
   The part after `|` is an optional logo and can be left off.
+
+- **`podcasts.ini`** — your podcast feeds, in the same shape:
+
+  ```ini
+  [Podcasts]
+  BBC The Documentary=https://podcasts.files.bbci.co.uk/p02nrsl1.rss
+  ```
+
+  Written with an example the first time podcasts are switched on.
 
 - **`avr.ini`** — per-receiver settings: which entries the main menu has,
   and filters for the Radio Browser directory. Written with sensible defaults
@@ -152,7 +175,8 @@ hostname to the real thing. Confirm the redirect, then power-cycle the receiver
 
 **Menus appear but nothing plays.** Turn on `resolve_playlists` if it is off.
 If the station's address begins with `https`, turn on `relay_https`; these
-receivers cannot do TLS at all.
+receivers cannot do TLS at all. This is the usual reason podcast episodes list
+but will not play.
 
 **A whole category is empty.** Check the filters in `avr.ini`. The examples in
 Retuner's own `cfg/avr.ini` include a demonstration tag filter that hides almost

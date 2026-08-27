@@ -22,7 +22,7 @@ uses
   {$IFDEF USESSL}
   openssl, opensslsockets,
   {$ENDIF}
-  regexpr, my_stations, vtuner, httpserver, radiobrowser, common, bookmark,
+  regexpr, my_stations, podcasts, vtuner, httpserver, radiobrowser, common, bookmark,
   dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui;
 
 // {$DEFINE FREE_ON_FINAL}
@@ -241,6 +241,24 @@ begin
         WriteInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
       MyStationsAutoRefreshPeriod:=ReadInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
 
+      if not ValueExists(INI_PODCASTS,INI_ENABLE) then
+        WriteString(INI_PODCASTS,INI_ENABLE,'0');
+      PodcastsEnabled:=ReadBool(INI_PODCASTS,INI_ENABLE,False);
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_FILE) then
+        WriteString(INI_PODCASTS,INI_PODCASTS_FILE,PODCASTS_FILE_NAME);
+      PodcastsFileName:=ReadString(INI_PODCASTS,INI_PODCASTS_FILE,PodcastsFileName);
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT) then
+        WriteInteger(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT,PODCAST_EPISODES_LIMIT);
+      PodcastEpisodesLimit:=ReadInteger(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT,PodcastEpisodesLimit);
+      if PodcastEpisodesLimit<1 then
+        PodcastEpisodesLimit:=PODCAST_EPISODES_LIMIT;
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_CACHE_TTL) then
+        WriteInteger(INI_PODCASTS,INI_PODCASTS_CACHE_TTL,PODCAST_CACHE_TTL);
+      PodcastCacheTTL:=ReadInteger(INI_PODCASTS,INI_PODCASTS_CACHE_TTL,PodcastCacheTTL);
+
       if not ValueExists(INI_RADIOBROWSER,INI_ENABLE) then
         WriteString(INI_RADIOBROWSER,INI_ENABLE,'1');
       RadioBrowserEnabled:=ReadBool(INI_RADIOBROWSER,INI_ENABLE,True);
@@ -431,6 +449,9 @@ begin
 
   if MyStationsEnabled then
     CheckMyStationsThread(nil);
+
+  if PodcastsEnabled then
+    LoadPodcastFeeds;
 
   RemoveOldRBCacheFiles;
 

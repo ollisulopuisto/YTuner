@@ -14,8 +14,10 @@ its own remote. No app, no second box.
   scrolling a few hundred of them with a jog dial.
 - Playlist links (`.m3u`, `.pls`, `.asx`) unwrapped for firmware that cannot
   follow them.
-- An optional relay for HTTPS-only stations, which these receivers cannot reach
-  on their own.
+- Optional podcast feeds, where each show is a folder and each episode plays
+  like a station.
+- An optional relay for HTTPS-only stations and podcast episodes, which these
+  receivers cannot reach on their own.
 
 See [DOCS.md](DOCS.md) for installation, how to point the receiver at it, what
 each option does, and the security notes.

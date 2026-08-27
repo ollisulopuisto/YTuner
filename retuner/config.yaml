@@ -29,6 +29,8 @@ options:
   radiobrowser: true
   cache_type: catMemStr
   my_stations: true
+  podcasts: false
+  podcast_episodes_limit: 100
   bookmarks: true
   stations_editor: false
   stations_editor_port: 8080
@@ -51,6 +53,8 @@ schema:
   radiobrowser: "bool"
   cache_type: "list(catNone|catFile|catMemStr|catDB|catMemDB|catPermMemDB)"
   my_stations: "bool"
+  podcasts: "bool"
+  podcast_episodes_limit: "int(1,500)"
   bookmarks: "bool"
   stations_editor: "bool"
   stations_editor_port: "port"

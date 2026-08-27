@@ -36,6 +36,11 @@ const
 // this many attempts deliver nothing at all.
   RELAY_RECONNECT_ATTEMPTS = 5;
   RELAY_RECONNECT_PAUSE_MS = 2000;
+// Before a single byte has arrived, the source is not one that dropped -- it is
+// one that was never there. A bridge that is still starting up deserves one
+// more try; a wrong or dead URL should reach the device as an error quickly
+// rather than after ten seconds of silence.
+  RELAY_INITIAL_ATTEMPTS = 2;
 
 type
 // Resolves a station id to the URL to pull from. Supplied by httpserver so this
@@ -274,6 +279,7 @@ var
   LForward: TRelayForwardStream;
   LWantIcy: boolean = False;
   LAttempts: integer = 0;
+  LLimit: integer = RELAY_INITIAL_ATTEMPTS;
   LBefore: Int64;
   LClient: TFPHTTPClient;
 begin
@@ -327,6 +333,10 @@ begin
         LAttempts:=0
       else
         Inc(LAttempts);
+      if LForward.Bytes>0 then
+        LLimit:=RELAY_RECONNECT_ATTEMPTS
+      else
+        LLimit:=RELAY_INITIAL_ATTEMPTS;
 
 // Nothing to reconnect for if it is the listener that left.
       if LForward.DownstreamFailed then
@@ -340,7 +350,7 @@ begin
           Logging(ltDebug, string.Join(' ',[RELAY_SERVICE+':','not resuming a metadata stream',LID]));
           Break;
         end;
-      if LAttempts>=RELAY_RECONNECT_ATTEMPTS then
+      if LAttempts>=LLimit then
         begin
           Logging(ltDebug, string.Join(' ',[RELAY_SERVICE+':','giving up on',LID]));
           Break;
@@ -350,6 +360,17 @@ begin
 // A write to a departed AVR raises, which leaves this loop by way of the
 // handler's exception guard rather than spinning on a dead socket.
     until False;
+// Headers are held back until the first upstream byte, so a source that never
+// answered has left the device holding a connection with no HTTP response on
+// it at all. Say what happened instead of just hanging up.
+    if not LForward.HeadersSent then
+      try
+        Logging(ltWarning, string.Join(' ',[RELAY_SERVICE+':','no audio from',LID,'->',LURL]));
+        SendRelayStatus(ASocket,'502 Bad Gateway','');
+      except
+        on E: Exception do
+          Logging(ltDebug, string.Join(' ',[RELAY_SERVICE+':',MSG_ERROR,'('+E.Message+')']));
+      end;
   finally
     LForward.Free;
   end;

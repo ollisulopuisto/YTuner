@@ -40,12 +40,12 @@ Done:
 - **A Home Assistant add-on** — `retuner/` packages all of this for the Home Assistant add-on store, with the options exposed in the UI and the station files in the add-on's configuration folder. See [retuner/DOCS.md](../retuner/DOCS.md).
 - **Running from a VPS** — see [REMOTE-HOSTING.md](REMOTE-HOSTING.md). Setup on the listener's side is one DNS field on the amplifier, with no router configuration and nothing extra at home.
 - **A "local stations" main menu entry** driven by the configured country.
+- **Podcasts** (`Podcasts`, off by default) — feeds listed in `podcasts.ini` become folders and their episodes become stations, so the receiver browses and plays them exactly as it does radio. Episode lists are fetched when a feed is opened rather than when the folder list is drawn, and cached, because the receiver asks for a directory a screenful at a time.
 
 Next:
 
 - **Browse improvements** — "recently played", and alphabetical sub-grouping so a country with thousands of stations stays navigable with a jog dial.
-- **Podcasts** via RSS, which map cleanly onto the vTuner directory and station model.
-- **The web editor extended** to bookmarks and per-AVR filters.
+- **The web editor extended** to bookmarks, podcast feeds and per-AVR filters.
 
 Under consideration:
 

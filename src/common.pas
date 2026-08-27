@@ -105,6 +105,10 @@ const
   INI_MYSTATIONS = 'MyStations';
   INI_MY_STATIONS_FILE = 'MyStationsFile';
   INI_MY_STATIONS_AUTO_REFRESH_PERIOD = 'MyStationsAutoRefreshPeriod';
+  INI_PODCASTS = 'Podcasts';
+  INI_PODCASTS_FILE = 'PodcastsFile';
+  INI_PODCASTS_EPISODES_LIMIT = 'PodcastEpisodesLimit';
+  INI_PODCASTS_CACHE_TTL = 'PodcastCacheTTL';
   INI_RADIOBROWSER = 'RadioBrowser';
   INI_RB_API_URL = 'RBAPIURL';
   INI_RB_POPULAR_AND_SEARCH_STATIONS_LIMIT = 'RBPopularAndSearchStationsLimit';
@@ -167,6 +171,7 @@ const
   RADIOBROWSER_PREFIX = 'RB';
   UNKNOWN_PREFIX = 'UN';
   PATH_MY_STATIONS = 'mystations';
+  PATH_PODCASTS = 'podcasts';
 
   PATH_PARAM_ID = 'id';
   PATH_PARAM_MAC = 'mac';
