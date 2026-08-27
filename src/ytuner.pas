@@ -23,7 +23,7 @@ uses
   openssl, opensslsockets,
   {$ENDIF}
   regexpr, my_stations, vtuner, httpserver, radiobrowser, common, bookmark,
-  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver;
+  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui;
 
 // {$DEFINE FREE_ON_FINAL}
 // Enable the FREE_ON_FINAL directive in IdCompilerDefines.inc of Indy library to remove standard (ie, intentional) Indy memory leaks.
@@ -328,6 +328,26 @@ begin
         WriteString(INI_DNSSERVER,INI_DNSSERVERS,DNS_SERVERS);
       DNSServers:=ReadString(INI_DNSSERVER,INI_DNSSERVERS,DNSServers);
 
+      if not ValueExists(INI_WEBGUI,INI_ENABLE) then
+        WriteString(INI_WEBGUI,INI_ENABLE,'0');
+      WebGUIEnabled:=ReadBool(INI_WEBGUI,INI_ENABLE,False);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_IPADDRESS) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_IPADDRESS,WEBGUI_IPADDRESS);
+      WebGUIIPAddress:=ReadString(INI_WEBGUI,INI_WEBGUI_IPADDRESS,WEBGUI_IPADDRESS);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_PORT) then
+        WriteInteger(INI_WEBGUI,INI_WEBGUI_PORT,WEBGUI_PORT);
+      WebGUIPort:=ReadInteger(INI_WEBGUI,INI_WEBGUI_PORT,WebGUIPort);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_USER) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_USER,WEBGUI_USER);
+      WebGUIUser:=ReadString(INI_WEBGUI,INI_WEBGUI_USER,WEBGUI_USER);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_PASSWORD) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
+      WebGUIPassword:=ReadString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
+
       if not ValueExists(INI_MAINTENANCESERVER,INI_ENABLE) then
         WriteString(INI_MAINTENANCESERVER,INI_ENABLE,'0');
       MaintenanceServiceEnabled:=ReadBool(INI_MAINTENANCESERVER,INI_ENABLE,False);
@@ -468,6 +488,9 @@ begin
           StartTimer;
         end;
     end;
+
+  if WebGUIEnabled and StartWebGUIServer then
+    Logging(ltInfo, WEBGUI_SERVICE+': listening on: '+WebGUIIPAddress+':'+WebGUIPort.ToString);
 
   if RelayHTTPS then
     begin

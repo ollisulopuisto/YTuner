@@ -127,6 +127,11 @@ const
   INI_MAINTENANCESERVER = 'MaintenanceServer';
   INI_MAINTENANCESERVER_IPADDRESS = 'MaintenanceServerIPAddress';
   INI_MAINTENANCESERVER_PORT = 'MaintenanceServerPort';
+  INI_WEBGUI = 'WebGUI';
+  INI_WEBGUI_IPADDRESS = 'WebGUIIPAddress';
+  INI_WEBGUI_PORT = 'WebGUIPort';
+  INI_WEBGUI_USER = 'WebGUIUser';
+  INI_WEBGUI_PASSWORD = 'WebGUIPassword';
 
 // Outbound HTTP is bounded so a stalled remote host cannot pin a request thread
 // forever. An AVR's vTuner browser waits on one request at a time, so an
