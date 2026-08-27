@@ -91,8 +91,12 @@ of jog dial.
 supports that.
 
 **`stations_editor`** — a small web page for editing the station list, on
-`stations_editor_port`. **It will not start without a password**, because it
-writes configuration files. Read the security note below before turning it on.
+`stations_editor_port`, which defaults to 8090. **It will not start without a
+password**, because it writes configuration files. Read the security note below
+before turning it on. The default used to be 8080; the add-on shares the host's
+network, so it was competing with every proxy and container on the machine. If
+you had the editor on 8080 and never changed the option, it moves — set it back
+to 8080 in the add-on options if something of yours depends on that.
 
 **`log_level`** — `normal` is right. `debug` logs every request, including
 station names, and is for working out why something will not play.

@@ -1,5 +1,5 @@
 name: Retuner
-version: "26.08.27.1"
+version: "26.08.27.2"
 slug: retuner
 description: Brings internet radio back to AV receivers whose vTuner service was shut down
 url: "https://github.com/ollisulopuisto/retuner/tree/master/retuner"
@@ -35,7 +35,7 @@ options:
   podcast_episodes_limit: 100
   bookmarks: true
   stations_editor: false
-  stations_editor_port: 8080
+  stations_editor_port: 8090
   stations_editor_user: admin
   stations_editor_password: ""
   log_level: normal
