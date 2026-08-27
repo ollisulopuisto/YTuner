@@ -1,54 +1,64 @@
-![AVR](img/avr.png)  
+<img src="retuner/icon.png" alt="" width="88" align="right">
 
-#### *"Everything should be made as simple as possible, but not simpler"* - Albert Einstein.
+# Retuner
 
-# YTuner
+**Your AV receiver has an internet radio button that stopped working. Retuner makes it work again** — the same menus, the same remote, no app and no second box.
 
-> **This is Retuner, a maintained fork of [YTuner](https://github.com/coffeegreg/YTuner).** It carries bug fixes upstream has not taken, builds with the Free Pascal compiler your distribution ships, and is tested in CI. See [doc/RETUNER.md](doc/RETUNER.md) for what changed, why the fork is named the way it is, and what is planned — including Spotify playback on receivers that have no Spotify Connect of their own.
+Receivers from Yamaha, Denon, Marantz, Onkyo, Pioneer, Harman Kardon and Pro-Ject shipped with internet radio powered by vTuner. That service has since moved behind a subscription, and some manufacturers migrated their customers elsewhere by firmware update — leaving a lot of perfectly good hardware with a dead button. Retuner answers the service the receiver is still trying to reach, so it browses and plays exactly as it always did.
 
-YTuner is a simple project inspired by [YCast](https://github.com/milaq/YCast) but rewritten from scratch and greatly improved.
-Designed to replace vTuner internet radio service and dedicated to all users of AVRs made by Yamaha, Denon, Onkyo, Marantz, Pioneer, Harman Kardon, Pro-Ject and others with built-in vTuner support.
-If you own one (or even more) of the vTuner-enabled AVRs mentioned above and want to enjoy free internet radio stations on your device as before, and be sure that your device's streaming service won't suddenly end, you should consider using YTuner.
+> **Retuner is a maintained fork of [YTuner](https://github.com/coffeegreg/YTuner) by Greg P.** — MIT licensed, and the origin of nearly all of this code. The fork carries fixes and features upstream has not taken, builds with the Free Pascal compiler your distribution ships, and is tested in CI. See [doc/RETUNER.md](doc/RETUNER.md) for what changed, why it is named the way it is, and what is planned.
 
-### Why
+![AVR](img/avr.png)
 
-YCast is a great project, but my goal was to run a similar service on a very low-spec platform where python along with packages turned out to be too heavy and too slow.
-Now, with YTuner you can enjoy improved functionality at full speed of ultra lightweight native app on operating systems such as:
+## How it works
 
-* Linux, macOS, BSD, Solaris, Raspberry Pi OS, OpenWRT, Windows
+The receiver has vTuner's hostname burned into its firmware, so the whole trick is making that name resolve to your machine instead. Retuner then answers the requests the receiver sends, serving the menu structure the firmware already knows how to draw — filled with stations from [Radio Browser](https://www.radio-browser.info) and from your own list.
 
-and with selected CPU architecture:
-
-* Intel i386, AMD64/x86_64, ARM/ARM64, PowerPC/PowerPC64, SPARC/SPARC64
-
-or any others powered by cross-build abilities of [Free Pascal Compiler](https://www.freepascal.org/).
+**Audio does not normally pass through Retuner at all.** It hands the receiver a stream URL and the receiver fetches it directly, which is why the service stays small and why its location barely matters.
 
 ## Features
 
-YTuner supports :
-* Custom stations list files (aka MyStations) : YAML files (YCast compatible) or INI files.
-* Great [Radio-browser.info](https://www.radio-browser.info) functionality.
-* AVR bookmarks. Single bookmark for many AVRs or dedicated bookmark for each AVR (if you own more then one) with support of "add" and "del" operations sent from AVR devices. 
-* Easy application configuration with ini files. 
-* Optional SSL support for YTuner HTTPS web request.
-* Radio stations logo images conversion/resize on the fly with couple of supported image formats (JPG,PNG,GIF,TIFF-optional) 
-* Radio stations logo images optional cache.
-* Radio-browser extensive caching with many options and auto refresh
-  * UUIDs, data structures and stations cache (based on files or RAM storage).
-  * Local DB based full cache of Radio-browser resources.
-* Radio-browser advanced filtering and sorting (single config for many AVRs or dedicated configs for each AVR (if you own more then one))
-* Radio-browser menu/submenu translator (for non-English users)
+**Stations**
+* Thousands of stations from [Radio Browser](https://www.radio-browser.info), with per-receiver filtering and sorting, and a menu translator for non-English users.
+* Your own station list, as an `.ini` file or a YCast-compatible `.yaml`.
+* Bookmarks saved with the receiver's own remote — shared across receivers, or one file each.
+* Station logos converted and resized on the fly (JPEG, PNG, GIF, TIFF), optionally cached.
+* Extensive Radio Browser caching: files, memory, or a full local SQLite mirror.
 
-YTuner also has build in :
-* Web service to support AVR requests.
-* Optional DNS proxy service to intercept vtuner.com related DNS queries and others if needed.
-* Maintenance service.
+**Added in this fork**
+* **A "Local Stations" menu entry** that goes straight to your country, instead of scrolling a few hundred of them with a jog dial.
+* **Podcasts** — an RSS feed becomes a folder, each episode a station. [Details below](#podcasts).
+* **Playlist resolution** — `.m3u`, `.pls`, `.asx` and `.xspf` unwrapped to the stream inside, for firmware that cannot follow one.
+* **An HTTPS relay** — a growing share of stations are HTTPS-only and these receivers have no TLS at all. Off by default; it puts Retuner in the audio path while a station plays.
+* **A stations editor in the browser**, so the list is not something you edit over SSH. Off by default, and refuses to start without a password.
+* **A Home Assistant add-on** — [below](#quickest-start-the-home-assistant-add-on).
+* **Remote hosting from a VPS**, with one setting on the amplifier and no router configuration — [below](#remote-hosting-vps).
+* **The bug fixes**, including a crash that ended the process outright and filters that silently did nothing. All listed in [doc/RETUNER.md](doc/RETUNER.md).
+
+**Built-in services**
+* Web service answering the receiver's requests.
+* Optional DNS service, to intercept `*.vtuner.com` lookups.
+* Optional maintenance service.
+
+Runs on Linux, macOS, BSD, Solaris, Raspberry Pi OS, OpenWRT and Windows — on i386, AMD64/x86_64, ARM/ARM64, PowerPC or SPARC, and anything else the [Free Pascal Compiler](https://www.freepascal.org/) targets. It is small: serving radio, the process holds about 8 MB resident behind a 4.6 MB binary.
+
+## Quickest start: the Home Assistant add-on
+
+If you run Home Assistant, this is the least work by a distance. Settings → Add-ons → Add-on store → **⋮** → **Repositories**, add:
+
+```
+https://github.com/ollisulopuisto/retuner
+```
+
+then install **Retuner**. The first install compiles from source, so give it a few minutes — longer on a Raspberry Pi. Options are exposed in the UI and your station files live in the add-on's configuration folder.
+
+[**retuner/DOCS.md**](retuner/DOCS.md) covers every option, both ways of pointing the receiver at it, where your files live, and the port conflicts to watch for on a Home Assistant machine.
 
 ## Supported devices
-***Theoretically, YTuner should work with most AVRs that support vTuner.***  
-Now, the list of supported **and tested** devices below is short, but I hope it will expand with your help.
+***Theoretically, Retuner should work with most AVRs that support vTuner.***  
+The list below was built up by people testing with their own hardware, upstream's contributors included. It grows the same way.
 
-***Please test YTuner with your AVR and give me your feedback***. 
+***If you try Retuner with a receiver that is not listed, please open an issue and say how it went.*** 
 
 ### Confirmed working
 - Yamaha
@@ -151,19 +161,25 @@ Now, the list of supported **and tested** devices below is short, but I hope it 
   * Libratone Zipp Speaker (Tested by [ndx1905-github](https://github.com/ndx1905-github). Thank you. /Read https://github.com/coffeegreg/YTuner/discussions/68 and/or https://github.com/coffeegreg/YTuner/issues/58 to find out how to use it/)
 
 ## Installation
-YTuner is a standalone application and in most cases it does not require additional services, frameworks, packages, virtual machines, libraries or tools to run properly (except optional OpenSSL and/or SQLite3 libraries).
-You can download from [Releases](https://github.com/coffeegreg/YTuner/releases) a file specific to your operating system and CPU architecture or build YTuner from source (look at [Build](README.md#build) section).
 
-After download (or build) save and extract files into prepared directory with granted read/write/execute privileges.
-Remember that the credentials who will run YTuner must also have permission to open TCP port 80 and optionally UDP 53 (note below).
+Retuner is a standalone binary. Beyond the optional OpenSSL and SQLite3 libraries below, it needs no runtime, framework, virtual machine or package manager.
 
-Now, you should have directory with some of the following subdirectories and files :
+**There are no prebuilt Retuner releases yet.** Either use the Home Assistant add-on above, which builds it for you, or build it yourself with [`script/build.sh`](#building-on-linux-without-lazarus) — that needs only the Free Pascal compiler your distribution already ships. Upstream's [releases](https://github.com/coffeegreg/YTuner/releases) are builds of *YTuner* and do not carry this fork's fixes.
+
+### A note on names
+
+The project is called Retuner, but **the binary is still `ytuner` and its configuration file is still `ytuner.ini`.** Renaming those needs a migration path so existing installs do not silently lose their configuration on first start, so it is deliberately left for its own change. Everywhere below, `ytuner` and `ytuner.ini` are the literal names on disk.
+
+Save and extract the files into a directory you have read/write/execute rights to. The account running Retuner also needs permission to open TCP port 80, and UDP 53 if you enable the DNS service.
+
+You should end up with a directory laid out roughly like this:
 
 ```
 -- ytuner
  |-- config (subdir for config files) 
    |-- stations.ini  (if you want to use a ini file with your favorite radio stations) 
    |-- stations.yaml (if you want to use a yaml/yml file with your favorite radio stations)
+   |-- podcasts.ini (podcast feeds, if you enable [Podcasts])
    |-- avr.ini (common configuration file for all your AVRs)
    |-- bookmark.xml (common bookmark file for all your AVRs - only if one of your AVR support bookmark)
    |-- ...... (AVRs dedicated bookmark and config files)
@@ -173,16 +189,16 @@ Now, you should have directory with some of the following subdirectories and fil
  |-- db (subdir for databse cache file)
    |-- rb.db (Radio browser database cache file)
  |-- ytuner (or ytuner.exe for Windows)
- |-- ytuner.ini (YTuner important config file)
+ |-- ytuner.ini (Retuner important config file)
 ```
  Do not forget to add execute privileges to `ytuner` on linux/*nix systems with a command like `chmod +x ytuner`.  
 
 
 ### OpenSSL (optional)
-If you want to use SSL to support YTuner HTTPS web request you have to get OpenSSL libraries.
+If you want to use SSL to support Retuner HTTPS web request you have to get OpenSSL libraries.
 - Most linux/*nix systems install OpenSSL by default. Otherwise, use your favorite package manager to get OpenSSL libraries or download them from [Github](https://github.com/openssl/openssl) or visit [OpenSSL Wiki](https://wiki.openssl.org/index.php/Binaries) for binary distributions source.   
 - Windows users can download them from [Github](https://github.com/openssl/openssl) (follow [NOTES-WINDOWS.md](https://github.com/openssl/openssl/blob/master/NOTES-WINDOWS.md) instructions) or visit [OpenSSL Wiki](https://wiki.openssl.org/index.php/Binaries) for binary distributions source.
-Make sure to get/build the correct version of the OpenSSL libraries with the correct bit length for your OS. 32-bit libraries are needed if you chose to use the 32-bit version of YTuner or 64-bit for the AMD64/x86_64 version of YTuner.
+Make sure to get/build the correct version of the OpenSSL libraries with the correct bit length for your OS. 32-bit libraries are needed if you chose to use the 32-bit version of Retuner or 64-bit for the AMD64/x86_64 version of Retuner.
 Finally, you should have 2 files:
   * OpenSSL 1.0.2 and earlier:
      + `ssleay32.dll` (or `libssl32.dll`) and `libeay32.dll`
@@ -195,53 +211,54 @@ Finally, you should have 2 files:
 
 and place them in your `ytuner` directory or anywhere in your system `PATH`.
 Make sure your system has valid CA certificates.
->Tip: The YTuner should work with LibreSSL libraries as well.
+>Tip: The Retuner should work with LibreSSL libraries as well.
 
 ### SQLite3 (optional)
-If you want to forget about potential connection problems with `Radio-browser.info` while using YTuner and listening to your favorite stations, use one of the options `[catDB, catMemDB, catPermMemDB]` of the `RBCacheType` parameter in the `ytuner.ini` file to download the full contents of the `Radio-browser.info` resources once and store it in your local SQLite3 database.
-Of course, only data that is useful for YTuner and AVR devices is downloaded and stored locally.
-Due to the use of the very popular SQLite database, YTuner will need to use the library provided by the SQLite development team.
+If you want to forget about potential connection problems with `Radio-browser.info` while using Retuner and listening to your favorite stations, use one of the options `[catDB, catMemDB, catPermMemDB]` of the `RBCacheType` parameter in the `ytuner.ini` file to download the full contents of the `Radio-browser.info` resources once and store it in your local SQLite3 database.
+Of course, only data that is useful for Retuner and AVR devices is downloaded and stored locally.
+Due to the use of the very popular SQLite database, Retuner will need to use the library provided by the SQLite development team.
 >! Important ! : Minimal version of SQLite library is 3.33.0 (2020-08-14)
 
 >Tip: If you faced problems with the SQLite library, read [this](doc/SQLITE.md) description.
 
 ## Configuration
 
-Your YTuner machine and AVR(s) have to have internet access. Make sure your firewall is properly configured if necessary.
+Your Retuner machine and AVR(s) have to have internet access. Make sure your firewall is properly configured if necessary.
 ### AVR
-Set all DNS servers on your AVR config to your YTuner machine IP address.
->Tip: If your AVR has a proxy server configuration panel, disable it. (switch to OFF). Do not try to use the IP address of the YTuner machine as a proxy server in your AVR's configuration panel.
+Set all DNS servers on your AVR config to your Retuner machine IP address.
+>Tip: If your AVR has a proxy server configuration panel, disable it. (switch to OFF). Do not try to use the IP address of the Retuner machine as a proxy server in your AVR's configuration panel.
 
 ### Router
-Make sure that your YTuner machine is assigned a static IPv4 address.
+Make sure that your Retuner machine is assigned a static IPv4 address.
 
-### YTuner Web Service
+### Retuner Web Service
 Regardless of what operating system you use, you need to make sure that TCP port 80 is not being used by another application.
-YTuner has a built-in multi-threaded web server that listens on TCP port 80 so you don't have to worry about its configuration and performance.
->Tip: In some special cases, it may be necessary to change the default TCP port 80 to another. You can do this by editing the YTuner ini file. See [Application configuration](README.md#application-configuration) section below.
+Retuner has a built-in multi-threaded web server that listens on TCP port 80 so you don't have to worry about its configuration and performance.
+>Tip: In some special cases, it may be necessary to change the default TCP port 80 to another. You can do this by editing the Retuner ini file. See [Application configuration](README.md#application-configuration) section below.
 
-### YTuner DNS Service
-YTuner has a built-in multi-threaded DNS server that listens on UDP port 53. This feature is optional and you can simple disable it and/or configure by editing configuration .ini file `ytuner.ini` (See [Application configuration](README.md#application-configuration) section below).
+### Retuner DNS Service
+Retuner has a built-in multi-threaded DNS server that listens on UDP port 53. This feature is optional and you can simple disable it and/or configure by editing configuration .ini file `ytuner.ini` (See [Application configuration](README.md#application-configuration) section below).
 You can also use your favorite DNS server like `dnsmasq`.  
-***Most important is to point `*.vtuner.com` domain to you YTuner machine and set all DNS servers on your AVR config to your YTuner machine IP address.***  
->Tip: In some special cases, it may be necessary to change the default UDP port 53 to another. You can do this by editing the YTuner ini file. See [Application configuration](README.md#application-configuration) section below.
+***Most important is to point `*.vtuner.com` domain to you Retuner machine and set all DNS servers on your AVR config to your Retuner machine IP address.***  
+>Tip: In some special cases, it may be necessary to change the default UDP port 53 to another. You can do this by editing the Retuner ini file. See [Application configuration](README.md#application-configuration) section below.
 
-### YTuner Maintenance Service
-YTuner has a built-in maintenance service for diagnostic and future goals. 
-At this moment you can use it to shut down YTuner service only.
+### Retuner Maintenance Service
+Retuner has a built-in maintenance service for diagnostic and future goals. 
+At this moment you can use it to shut down Retuner service only.
 >Tip: In most cases, you will not need this functionality. See [Application configuration](README.md#application-configuration) section below.
 
 ### Application configuration
-YTuner is configured by simple `ytuner.ini` file.  
-This file has the following capabilities:
-https://github.com/coffeegreg/YTuner/blob/a87d0b45ec1987230d2455bc727d7a4407e6a856/cfg/ytuner.ini#L1-L180
+Retuner is configured by a single `ytuner.ini` file. Every setting is documented inline in the shipped copy:
 
-YTuner's filtering and sorting functionality can be oriented by AVR device.
-You can decide about it with `CommonAVRini` setting of `ytuner.ini`.
-Common AVR config file `avr.ini` or other AVRs dedicated config files have the following capabilities:
-https://github.com/coffeegreg/YTuner/blob/95c8f9d707faf45579063efba3066204e91607fd/cfg/avr.ini#L1-L163
+* [**`cfg/ytuner.ini`**](cfg/ytuner.ini) — the main configuration, including the sections this fork adds: `[Podcasts]`, `[WebGUI]`, the `RelayHTTPS` relay, `LocalCountry`, `ResolvePlaylists` and the `DNSAdvertiseIP` / `RestrictForwarding` options for remote hosting.
+* [**`cfg/avr.ini`**](cfg/avr.ini) — per-receiver settings: which entries the main menu carries, and the Radio Browser filters.
+* [**`cfg/podcasts.ini`**](cfg/podcasts.ini) — podcast feeds, if you enable them.
 
-_Please read the descriptions in both `.ini` files carefully._
+Retuner's filtering and sorting can be oriented per AVR device; `CommonAVRini` in `ytuner.ini` decides whether all your receivers share one `avr.ini` or each gets its own.
+
+_Please read the descriptions in the `.ini` files carefully — they are the reference, and they are kept current with the code._
+
+>Note: the example `cfg/avr.ini` carries a demonstration tag filter (`AllowedTags=*dance*;*medieval`) that hides almost every station. It is there to show the syntax. Clear it, or start from the file Retuner writes itself on first run.
 ### Custom stations
 You can enable support for the stations list local file. Two types of files are supported:
 * .ini file :
@@ -264,14 +281,14 @@ Category two name:
   Station three name: http://url-of-station-three|http://url-of-station-three-logo
   Station four name: http://url-of-station-four|http://url-of-station-four-logo
 ```
-YTuner can convert and resize on the fly logo image from JPEG, PNG, GIFF and TIFF (optionaly) to JPEG (default) or PNG format. 
+Retuner can convert and resize on the fly logo image from JPEG, PNG, GIFF and TIFF (optionaly) to JPEG (default) or PNG format. 
 >Tip: URLs with logo station images are optional.
 
 ### Bookmark
 What is the `Bookmark` ? `Bookmark` is what is mentioned in the AVR user's manual. `Bookmark` is operated only from the AVR device using the remote control. When you listen to a new station you can decide to put it into the `Bookmark` or want to remove it from it. All stations added in this way are visible in the `Bookmark` submenu of the AVR receiver.
 
-If you AVR support `Bookmark` you can enable and use this YTuner functionality.
-You can configure YTuner to use one common bookmark file (`bookmark.xml`) for all your AVR devices (if you have more then one) or each AVR will own its own bookmark file. 
+If you AVR support `Bookmark` you can enable and use this Retuner functionality.
+You can configure Retuner to use one common bookmark file (`bookmark.xml`) for all your AVR devices (if you have more then one) or each AVR will own its own bookmark file. 
 See [Application configuration](README.md#application-configuration) section above.
 
 ## Running the application
@@ -282,8 +299,7 @@ $ sudo ./ytuner
 ```
 Do not forget to add execute privileges to `ytuner` on linux/*nix systems with a command like `chmod +x ytuner`.
 ### Windows
->Tip: Due to this "issue" [#87](https://github.com/coffeegreg/YTuner/issues/87) with false positives of Windows Defender and the VirusTotal "oracle" I removed all YTuner binaries for M$ Windows.
->In this case you have to build your YTuner binaries yourself.
+>Note: upstream withdrew its Windows binaries after false positives from Windows Defender and VirusTotal ([YTuner#87](https://github.com/coffeegreg/YTuner/issues/87)). This fork ships no prebuilt binaries at all, so on Windows you build it yourself either way.
 
 Simply execute `ytuner.exe`. 
 
@@ -297,17 +313,17 @@ Set `Enable=1` in the `[Podcasts]` section of `ytuner.ini` and list feeds in `po
 `retuner/` packages this as a Home Assistant add-on. Add `https://github.com/ollisulopuisto/retuner` under Settings → Add-ons → Add-on store → ⋮ → Repositories, then install **Retuner**. The settings are exposed as add-on options and your station files live in the add-on's configuration folder. See [retuner/DOCS.md](retuner/DOCS.md) for the options, how to point the receiver at it, and the port-conflict traps on a Home Assistant machine.
 
 ### Remote hosting (VPS)
-YTuner does not have to run on the same LAN as your AVR — a VPS such as an Oracle Free Tier instance works, and the setup on the listener's side is one DNS field on the amplifier: no router configuration, nothing extra at home. `DNSAdvertiseIP` makes the built-in DNS service answer with the public address instead of the private one it sees behind NAT, and `RestrictForwarding` keeps it from being an open resolver. See [doc/REMOTE-HOSTING.md](doc/REMOTE-HOSTING.md) for the full setup, the Oracle-specific firewall trap, and which options put audio through the VPS.
+Retuner does not have to run on the same LAN as your AVR — a VPS such as an Oracle Free Tier instance works, and the setup on the listener's side is one DNS field on the amplifier: no router configuration, nothing extra at home. `DNSAdvertiseIP` makes the built-in DNS service answer with the public address instead of the private one it sees behind NAT, and `RestrictForwarding` keeps it from being an open resolver. See [doc/REMOTE-HOSTING.md](doc/REMOTE-HOSTING.md) for the full setup, the Oracle-specific firewall trap, and which options put audio through the VPS.
 
 ### Spotify on a receiver without Spotify Connect
-Plenty of these receivers never got the firmware update that added Spotify Connect, so the Spotify app cannot see them at all. A Connect client such as [go-librespot](https://github.com/devgianlu/go-librespot) can republish playback as an ordinary Icecast stream, which YTuner then presents as a station the AVR can select. [doc/SPOTIFY.md](doc/SPOTIFY.md) has the recipe, what track titles need, and the caveats — Premium is required and the transport buttons on the amplifier will not drive playback.
+Plenty of these receivers never got the firmware update that added Spotify Connect, so the Spotify app cannot see them at all. A Connect client such as [go-librespot](https://github.com/devgianlu/go-librespot) can republish playback as an ordinary Icecast stream, which Retuner then presents as a station the AVR can select. [doc/SPOTIFY.md](doc/SPOTIFY.md) has the recipe, what track titles need, and the caveats — Premium is required and the transport buttons on the amplifier will not drive playback.
 
 ## Build
-You can use [Lazarus Free Pascal RAD IDE](https://www.lazarus-ide.org/) to build YTuner. 
+You can use [Lazarus Free Pascal RAD IDE](https://www.lazarus-ide.org/) to build Retuner. 
 Use the latest versions of IDE and FPC. Relevant project file is included.
 
 ### Building on Linux without Lazarus
-`script/build.sh` builds YTuner with the plain Free Pascal compiler, so no IDE is required. It fetches Indy on first run, packs the embedded SQL resources and writes the binary to `bin/<cpu>-<os>/ytuner`:
+`script/build.sh` builds Retuner with the plain Free Pascal compiler, so no IDE is required. It fetches Indy on first run, packs the embedded SQL resources and writes the binary to `bin/<cpu>-<os>/ytuner`:
 
 ```
 sudo apt install fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc lazarus-src zip git
@@ -320,12 +336,17 @@ sudo apt install fp-compiler fp-units-fcl fp-units-net fp-units-db fp-units-misc
 Set `DEBUG=1` for an unoptimised build with debug information, or `INDY_DIR` / `LAZUTILS_DIR` if you keep those sources somewhere of your own.
 
 ### Dependencies
-YTuner uses [Indy - Internet Direct](https://github.com/IndySockets/Indy) library to build its own binary files. Of course, YTuner binaries no longer need any additional libraries beyond the optional OpenSSL and/or SQLite3.
->Important: Use the latest version of Indy library to build YTuner.
+Retuner uses [Indy - Internet Direct](https://github.com/IndySockets/Indy) library to build its own binary files. Of course, Retuner binaries no longer need any additional libraries beyond the optional OpenSSL and/or SQLite3.
+>Important: Use the latest version of Indy library to build Retuner.
 
-## Summary
+## Credits
+
+Retuner exists because of [YTuner](https://github.com/coffeegreg/YTuner) by **Greg P.**, which is the origin of nearly all of this code and remains MIT licensed. The tested-device list above was assembled by upstream's contributors, who each had hardware nobody else did. YTuner was in turn inspired by [YCast](https://github.com/milaq/YCast).
+
+Stations come from [Radio Browser](https://www.radio-browser.info), a community-run and community-funded directory.
+
 If you found this project useful, please star it. ⭐
 
 ## License
-YTuner is licensed under MIT license.
-See the [license.txt](LICENSE.txt) file for more details.
+
+MIT, carried forward from upstream unchanged with its copyright notice intact. See [LICENSE.txt](LICENSE.txt).
