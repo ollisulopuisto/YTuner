@@ -80,10 +80,13 @@ jobs:
           # looks like the obvious host, does not exist.
           choco install freepascal --no-progress -y
           $exe = "$env:RUNNER_TEMP\fpc-win64.exe"
+          # There is no standalone x86_64-win64 installer: SourceForge's
+          # Win32/3.2.2 directory has a combined 32-and-64 build, and a cross
+          # package that adds ppcrossx64 to an i386 install. Guessing at a name
+          # that reads like it should exist is what produced two 404s.
           $urls = @(
-            'https://ftp.freepascal.org/pub/fpc/dist/3.2.2/x86_64-win64/fpc-3.2.2.x86_64-win64.exe',
-            'https://downloads.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe',
-            'https://master.dl.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe?viasf=1'
+            'https://downloads.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.win32.and.win64.exe',
+            'https://downloads.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.i386-win32.cross.x86_64-win64.exe'
           )
           # curl.exe rather than Invoke-WebRequest: --max-time is a deadline on
           # the whole transfer, and a mirror that accepts the connection and
@@ -106,6 +109,10 @@ jobs:
           } else {
             Write-Host "::warning::no win64 installer could be fetched; the 32-bit compiler stands"
           }
+          # curl.exe's exit code outlives the loop, and a PowerShell step fails
+          # on a non-zero $LASTEXITCODE. The fallback above is a decision, not a
+          # failure, so the step ends by saying so.
+          exit 0
 
       - name: Find the compiler (Windows)
         if: runner.os == 'Windows'
