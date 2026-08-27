@@ -22,8 +22,10 @@ PORT=${PORT:-18100}
 WORK=$(mktemp -d)
 PID=""
 cleanup() {
-  [ -n "$PID" ] && kill "$PID" 2>/dev/null || true
-  [ -n "$PID" ] && wait "$PID" 2>/dev/null || true
+  if [ -n "$PID" ]; then
+    kill "$PID" 2>/dev/null || true
+    wait "$PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM

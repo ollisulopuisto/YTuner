@@ -24,8 +24,12 @@ WORK=$(mktemp -d)
 PID=""
 REPO_PID=""
 cleanup() {
-  [ -n "$PID" ] && kill "$PID" 2>/dev/null || true
-  [ -n "$REPO_PID" ] && kill "$REPO_PID" 2>/dev/null || true
+  if [ -n "$PID" ]; then
+    kill "$PID" 2>/dev/null || true
+  fi
+  if [ -n "$REPO_PID" ]; then
+    kill "$REPO_PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
