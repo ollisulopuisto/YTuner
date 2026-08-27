@@ -7,6 +7,12 @@ on:
   push:
     branches: [master]
     tags: ['v*']
+  # A release published from the web UI creates its tag through the API, and a
+  # tag created that way does not reliably raise the push event this workflow
+  # would otherwise wait for. Accepting both means the binaries get attached
+  # whichever way the release is made.
+  release:
+    types: [published]
   pull_request:
   workflow_dispatch:
 
@@ -285,7 +291,7 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -301,6 +307,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist
-          gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz \
-            --title "Retuner ${GITHUB_REF_NAME}" \
-            --generate-notes
+          tag=${GITHUB_REF_NAME}
+          # Publishing from the web UI creates the release first, so creating it
+          # again fails. Upload into the one that exists instead.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag exists; uploading into it"
+            gh release upload "$tag" dist/*.tar.gz --clobber
+          else
+            gh release create "$tag" dist/*.tar.gz \
+              --title "Retuner $tag" \
+              --generate-notes
+          fi
