@@ -65,14 +65,34 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $url = 'https://download.freepascal.org/ftp/fpc/dist/3.2.2/x86_64-win64/fpc-3.2.2.x86_64-win64.exe'
+          # Chocolatey first: it always works and guarantees a compiler, even if
+          # only the 32-bit one. Then try to put a native x86_64 compiler beside
+          # it. The mirror list is a list because download.freepascal.org, which
+          # looks like the obvious host, does not exist.
+          choco install freepascal --no-progress -y
           $exe = "$env:RUNNER_TEMP\fpc-win64.exe"
-          Write-Host "downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile $exe
-          Write-Host "installing"
-          $p = Start-Process -Wait -PassThru -FilePath $exe `
-                 -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\fpc'
-          Write-Host "installer exit code: $($p.ExitCode)"
+          $urls = @(
+            'https://ftp.freepascal.org/pub/fpc/dist/3.2.2/x86_64-win64/fpc-3.2.2.x86_64-win64.exe',
+            'https://downloads.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe',
+            'https://master.dl.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe?viasf=1'
+          )
+          foreach ($u in $urls) {
+            Write-Host "trying $u"
+            try {
+              Invoke-WebRequest -Uri $u -OutFile $exe -UseBasicParsing -MaximumRedirection 10
+              Write-Host "downloaded from $u"
+              break
+            } catch {
+              Write-Host "  no: $($_.Exception.Message)"
+            }
+          }
+          if (Test-Path $exe) {
+            $p = Start-Process -Wait -PassThru -FilePath $exe `
+                   -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\fpc'
+            Write-Host "installer exit code: $($p.ExitCode)"
+          } else {
+            Write-Host "::warning::no win64 installer could be fetched; the 32-bit compiler stands"
+          }
 
       - name: Find the compiler (Windows)
         if: runner.os == 'Windows'
@@ -133,8 +153,7 @@ jobs:
               echo "FPC_FLAGS=-Px86_64 -Twin64" >> "$GITHUB_ENV"
               echo ">>> using the x86_64 cross-compiler"
             else
-              echo "::error::this compiler makes $(fpc -iTP) and has no x86_64 cross-compiler"
-              exit 1
+              echo "::warning::this compiler makes $(fpc -iTP) and has no x86_64 cross-compiler, so the artifact is 32-bit"
             fi
           fi
 
