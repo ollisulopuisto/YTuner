@@ -87,6 +87,8 @@ const
   INI_ACT_AS_HOST = 'ActAsHost';
   INI_USE_SSL = 'UseSSL';
   INI_RESOLVE_PLAYLISTS = 'ResolvePlaylists';
+  INI_RELAY_HTTPS = 'RelayHTTPS';
+  INI_RELAY_PORT = 'RelayPort';
   INI_REDIRECT_HTTP_CODE = 'RedirectHTTPCode';
   INI_MESSAGE_INFO_LEVEL = 'MessageInfoLevel';
   INI_ICON_SIZE = 'IconSize';

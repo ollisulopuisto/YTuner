@@ -39,7 +39,7 @@ uses
   fpreadtiff,
 {$ENDIF}
   fphttpclient, httpdefs, httproute, DOM,
-  common, vtuner, my_stations, radiobrowser, bookmark, avr, translator;
+  common, vtuner, my_stations, radiobrowser, bookmark, avr, translator, relayserver;
 
 const
   WEB_SERVICE = 'Web Service';
@@ -125,6 +125,9 @@ function SetVTunerDisplay(AMessage: string): TVTunerDisplay;
 
 // Display AVR messsages
 procedure DisplayMessage(AMessage: string; var ARes: TResponse);
+
+// Station lookup for the relay listener, which has no access to these units.
+function ResolveRelayStationURL(const AID: string): string;
 
 implementation
 
@@ -1028,9 +1031,14 @@ begin
       UID:=Station.MSID;
       Name:=Station.MSName;
       Description:='My favorite "'+Station.MSName+'"';
-      URL:=StripHttps(Station.MSURL,AReq);
-      if ResolvePlaylists and LooksLikePlaylist(URL) then
-        URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+      if NeedsRelay(Station.MSURL) then
+        URL:=RelayURLFor(UID)
+      else
+        begin
+          URL:=StripHttps(Station.MSURL,AReq);
+          if ResolvePlaylists and LooksLikePlaylist(URL) then
+            URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+        end;
 
       Icon:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_ICON+IconExtension+'?'+PATH_PARAM_ID+'='+Station.MSID;
       Genre:=Category;
@@ -1054,11 +1062,18 @@ begin
           Location:=ReplaceDiacritics(Location, ATranslatorIdx);
         end;
       Description:=Name+' : '+RBSHomePageURL;
-      URL:=StripHttps(RBSURL,AReq);
+// An HTTPS-only station goes through the relay: rewriting the scheme, as
+// all-as-http does, only works while the station still answers on port 80.
+      if NeedsRelay(RBSURL) then
+        URL:=RelayURLFor(UID)
+      else
+        begin
+          URL:=StripHttps(RBSURL,AReq);
 // Hand the AVR our own play endpoint so the playlist is unwrapped when the
 // station is actually selected, not while the listing is being rendered.
-      if ResolvePlaylists and LooksLikePlaylist(URL) then
-        URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+          if ResolvePlaylists and LooksLikePlaylist(URL) then
+            URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+        end;
       if RBSTags='' then
         Genre:=AReq.RouteParams[PATH_CATEGORY]
       else
@@ -1111,6 +1126,32 @@ begin
   end;
 end;
 // END - Display AVR messsages
+
+// BEGIN - Relay support
+function ResolveRelayStationURL(const AID: string): string;
+var
+  LRBStation: TRBStation;
+begin
+  Result:='';
+  case AID.Substring(0,2) of
+    MY_STATIONS_PREFIX:
+      with GetMyStationByID(AID) do
+        if Station.MSID<>'' then
+          Result:=Station.MSURL;
+    RADIOBROWSER_PREFIX:
+      begin
+        LRBStation:=TRBStation.Create;
+        try
+          GetRBStationByID(LRBStation,AID.Substring(3,12),0);
+          if LRBStation.RBSID<>'' then
+            Result:=LRBStation.RBSURL;
+        finally
+          LRBStation.Free;
+        end;
+      end;
+  end;
+end;
+// END - Relay support
 
 end.
 

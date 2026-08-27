@@ -23,7 +23,7 @@ uses
   openssl, opensslsockets,
   {$ENDIF}
   regexpr, my_stations, vtuner, httpserver, radiobrowser, common, bookmark,
-  dnsserver, threadtimer, avr, maintenance, radiobrowserdb;
+  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver;
 
 // {$DEFINE FREE_ON_FINAL}
 // Enable the FREE_ON_FINAL directive in IdCompilerDefines.inc of Indy library to remove standard (ie, intentional) Indy memory leaks.
@@ -143,6 +143,14 @@ begin
       if not ValueExists(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS) then
         WriteString(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,'0');
       ResolvePlaylists:=ReadBool(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,False);
+
+      if not ValueExists(INI_CONFIGURATION,INI_RELAY_HTTPS) then
+        WriteString(INI_CONFIGURATION,INI_RELAY_HTTPS,'0');
+      RelayHTTPS:=ReadBool(INI_CONFIGURATION,INI_RELAY_HTTPS,False);
+
+      if not ValueExists(INI_CONFIGURATION,INI_RELAY_PORT) then
+        WriteInteger(INI_CONFIGURATION,INI_RELAY_PORT,RELAY_PORT);
+      RelayPort:=ReadInteger(INI_CONFIGURATION,INI_RELAY_PORT,RelayPort);
 
       if not ValueExists(INI_CONFIGURATION,INI_REDIRECT_HTTP_CODE) then
         WriteInteger(INI_CONFIGURATION,INI_REDIRECT_HTTP_CODE,HTTP_CODE_REDIRECT);
@@ -455,6 +463,13 @@ begin
           OnTimer:=@MyStationsRefreshOnTimer;
           StartTimer;
         end;
+    end;
+
+  if RelayHTTPS then
+    begin
+      OnRelayResolveURL:=@ResolveRelayStationURL;
+      if StartRelayServer then
+        Logging(ltInfo, RELAY_SERVICE+': listening on: '+WebServerIPAddress+':'+RelayPort.ToString);
     end;
 
   if DNSServerEnabled and StartDNSServer then
