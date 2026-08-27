@@ -209,8 +209,15 @@ begin
 // http://host:8000/;. Per-field sanitising happens in SetRBStation instead.
       Result:=Get(RBAPIURL+'/json/'+AURL);
     except
-      Logging(ltError,MSG_RADIOBROWSER+': '+MSG_ERROR+' '+MSG_GETTING+' '+AURL);
-      Result:='[]';
+// Say what actually went wrong. Swallowing the exception left a log line that
+// named the request and nothing else, so a DNS failure, a refused connection,
+// a timeout and an HTTP error status were indistinguishable -- and this is the
+// one call whose failure costs the whole Radio Browser directory.
+      on E: Exception do
+        begin
+          Logging(ltError,MSG_RADIOBROWSER+': '+MSG_ERROR+' '+MSG_GETTING+' '+RBAPIURL+'/json/'+AURL+' ('+E.Message+')');
+          Result:='[]';
+        end;
     end;
   finally
     Free;
