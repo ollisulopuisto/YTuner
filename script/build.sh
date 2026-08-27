@@ -52,13 +52,29 @@ fi
 # ---- Embedded SQL resources --------------------------------------------------
 sh "$ROOT/script/zip-sql.sh" >/dev/null
 
+# ---- Target ------------------------------------------------------------------
+# Empty means "whatever this compiler builds by default". Set it to cross-
+# compile, e.g. FPC_FLAGS='-Px86_64 -Twin64' on a 32-bit Windows compiler that
+# carries the x86_64 cross-compiler alongside it. The same flags have to reach
+# the queries below, or the output lands in a directory named after the host.
+FPC_FLAGS=${FPC_FLAGS:-}
+
 # ---- Resource compiler -------------------------------------------------------
 # FPC drives the resource step with windres-style arguments. On ELF targets we
 # have fpcres instead, so bridge the two command lines.
-OUT_CPU=$(fpc -iTP)
-OUT_OS=$(fpc -iTO)
+# shellcheck disable=SC2086  # FPC_FLAGS is a deliberately split flag list
+OUT_CPU=$(fpc $FPC_FLAGS -iTP)
+# shellcheck disable=SC2086  # ditto
+OUT_OS=$(fpc $FPC_FLAGS -iTO)
 BUILD_DIR=$ROOT/.build/$OUT_CPU-$OUT_OS
 mkdir -p "$BUILD_DIR/units"
+
+# Windows has the real windres, and an .exe suffix to go with it. Everything
+# below that differs between the two lives here rather than in the fpc line.
+case "$OUT_OS" in
+  win32|win64) RESOURCE_FLAG=""; EXE_SUFFIX=".exe" ;;
+  *)           RESOURCE_FLAG="-FC$BUILD_DIR/windres"; EXE_SUFFIX="" ;;
+esac
 
 SHIM=$BUILD_DIR/windres
 cat > "$SHIM" <<'SHIM_EOF'
@@ -87,6 +103,18 @@ chmod +x "$SHIM"
 TARGET_DIR=$ROOT/bin/$OUT_CPU-$OUT_OS
 mkdir -p "$TARGET_DIR"
 
+# Under Git Bash the shell hands out /d/a/... and the compiler is a native
+# Windows program that reads that as \d\a\..., a path that does not exist. It
+# fails as "Can't create object file", which names the symptom and not the
+# cause. cygpath is how the two agree; everywhere else this is the identity.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 if [ -n "${DEBUG:-}" ]; then
   OPTS="-O- -gl -gw"
 elif [ -n "${CHECKED:-}" ]; then
@@ -110,13 +138,15 @@ else
 fi
 
 # shellcheck disable=SC2086
-fpc -MObjFPC -Scghi $OPTS -vew -FC"$SHIM" \
-  -Fu"$LAZUTILS_DIR" \
-  -Fu"$INDY_DIR/Core" -Fu"$INDY_DIR/System" -Fu"$INDY_DIR/Protocols" \
-  -Fi"$INDY_DIR/Core" -Fi"$INDY_DIR/System" -Fi"$INDY_DIR/Protocols" \
-  -Fu"$ROOT/src" \
-  -FU"$BUILD_DIR/units" \
-  -o"$TARGET_DIR/retuner" \
-  "$ROOT/src/retuner.pas"
+fpc $FPC_FLAGS -MObjFPC -Scghi $OPTS -vew $RESOURCE_FLAG \
+  -Fu"$(winpath "$LAZUTILS_DIR")" \
+  -Fu"$(winpath "$INDY_DIR/Core")" -Fu"$(winpath "$INDY_DIR/System")" \
+  -Fu"$(winpath "$INDY_DIR/Protocols")" \
+  -Fi"$(winpath "$INDY_DIR/Core")" -Fi"$(winpath "$INDY_DIR/System")" \
+  -Fi"$(winpath "$INDY_DIR/Protocols")" \
+  -Fu"$(winpath "$ROOT/src")" \
+  -FU"$(winpath "$BUILD_DIR/units")" \
+  -o"$(winpath "$TARGET_DIR/retuner$EXE_SUFFIX")" \
+  "$(winpath "$ROOT/src/retuner.pas")"
 
-echo "Built $TARGET_DIR/retuner"
+echo "Built $TARGET_DIR/retuner$EXE_SUFFIX"

@@ -32,7 +32,7 @@ const
 // CalVer: YY.MM.DD.N, N being the build within that day. The date a build was
 // cut is the useful thing to know about it -- semantic versioning would promise
 // an API this has never had.
-  APP_VERSION = '26.08.27.3';
+  APP_VERSION = '26.08.27.4';
 // The YTuner release this fork started from. Separate from APP_VERSION because
 // it means something different and does not move when we cut a build: putting
 // a Retuner version in the credit line below would attribute our releases to
@@ -525,8 +525,6 @@ var
   LDBLibIdx, LDBLibSearchPathIdx: integer;
 {$IFDEF UNIX}
   LLibHandle: Pointer;
-  LPdlinfo: Pdl_info;
-  LPtrLibFile: Pointer;
 {$ENDIF}
 begin
   ALibFile:=ALibFile.Trim;
@@ -560,14 +558,21 @@ begin
               LLibHandle:=dlopen(PAnsiChar(DBLib[LDBLibIdx]), RTLD_LAZY);
               if LLibHandle<>nil then
                 begin
-                  LPdlinfo:=LLibHandle;
-                  LPtrLibFile:=LPdlinfo^.dli_fbase;
-                  LLibFile:=String(LPtrLibFile);
-{$IFDEF DARWIN}
-                  if LLibFile='' then
-                    LLibFile:=DBLib[LDBLibIdx];
-{$ENDIF}
-                  LPtrLibFile:=nil;
+// What dlopen returns is an opaque handle, not a dl_info record. This used to
+// cast it to one and read dli_fbase out of it: on glibc the handle points at a
+// link_map, whose second field is char *l_name, so the read landed on a real
+// path and gave the right answer for the wrong reason. On macOS the same eight
+// bytes are not a pointer to anything, and the process died before it finished
+// starting - EXC_BAD_ACCESS in FPC_ANSISTR_ASSIGN, which is what a Mac runner
+// reported the first time this code was ever run on one. There was already a
+// Darwin-only guard here for the empty string it sometimes produced, which is
+// the same bug seen from the outside.
+//
+// The loader found the library by name, so the name is what to pass on:
+// TSQLDBLibraryLoader resolves a bare soname exactly the way dlopen just did.
+// The absolute path is not recoverable from a handle without dlsym and dladdr,
+// and nothing here needs it.
+                  LLibFile:=DBLib[LDBLibIdx];
                   dlclose(LLibHandle);
                   LFound:=True;
                 end;
