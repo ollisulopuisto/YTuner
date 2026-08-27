@@ -63,6 +63,11 @@ The list below was built up by people testing with their own hardware, upstream'
 ***If you try Retuner with a receiver that is not listed, please open an issue and say how it went.*** 
 
 ### Confirmed working
+
+> This list is the devices people have reported, not a survey of what can work.
+> [doc/DEVICES.md](doc/DEVICES.md) has what could be established without the
+> hardware — which brands vTuner actually provisioned, which are worth trying,
+> and how to find out what hostname your device asks for so a report is useful.
 - Yamaha
   * Yamaha RX-V671
   * Yamaha RX-V673

@@ -113,13 +113,27 @@ INI
     bad "the process died"
     sed -n '$p' "$run/server.log" >&2
   fi
+
+  # Not fuzzing, but this is the one phase with a DNS server running: every
+  # name the shipped configuration claims to intercept has to actually be
+  # answered here, as a subdomain and as the apex, and a name nobody intercepts
+  # must not be.
+  echo "The intercept list does what it says"
+  patterns=$(sed -n 's/^InterceptDNs=//p' "$ROOT/cfg/retuner.ini" | head -1)
+  if [ -z "$patterns" ]; then
+    bad "no InterceptDNs line found in cfg/retuner.ini"
+  elif python3 "$ROOT/script/testdata/dns-intercepts.py" "$2" 127.0.0.1 "$patterns"; then
+    :
+  else
+    fail=1
+  fi
   # Every intercepted query is logged with the name as the hand-written walk
   # made of it, so the awkward names appearing there is the evidence that they
   # got that far. Without this a green run could just mean Indy dropped
   # everything before any of this project's code saw it - which is exactly what
   # happens to the malformed group, and worth knowing rather than assuming.
-  reached=$(grep 'DNS Query intercept' "$run/server.log" \
-    | grep -vc 'radio\.vtuner\.com' || true)
+  reached=$(grep -a 'DNS Query intercept' "$run/server.log" \
+    | grep -avc 'radio\.vtuner\.com' || true)
   if [ "${reached:-0}" -ge 8 ]; then
     ok "awkward names reached the name walk itself ($reached of them)"
   else

@@ -30,12 +30,24 @@ const
 // This must stay in step with InterceptDNs in cfg/retuner.ini: the Home
 // Assistant add-on does not write that key, so this constant is what its users
 // actually get.
+// radiodenon.com and radioharmankardon.com were added on DNS evidence rather
+// than a device report. *.vtuner.com carries a wildcard record, so a brand
+// resolving there proves nothing; what does mean something is a name with its
+// own A record pointing where a known vTuner host points. radiodenon.com
+// answers on the same address as radiomarantz.com and denon.vtuner.com, and
+// radioharmankardon.com on the same address as revox.vtuner.com. Both brands
+// are already in the confirmed list via *.vtuner.com, so this only adds the
+// separate portal name their firmware may ask for instead. See doc/DEVICES.md.
   INTERCEPT_DNS = '*.vtuner.com,*.radiosetup.com,*.my-noxon.net,'+
-                  '*.radiomarantz.com,*.wifiradiofrontier.com';
+                  '*.radiomarantz.com,*.radiodenon.com,'+
+                  '*.radioharmankardon.com,*.wifiradiofrontier.com';
   DNS_SERVERS = '8.8.8.8,9.9.9.9';
 // How long a client stays allowed to have queries forwarded after it was last
 // seen on the web service.
   DNS_CLIENT_TTL_HOURS = 24;
+// A name is at most 255 bytes on the wire, but the walk that parses one is not
+// bounded by that, so the log line is.
+  DNS_LOGGED_NAME_MAX = 300;
 
 var
   IdDNSServerProxy: TIdDNSServerProxy;
@@ -89,6 +101,27 @@ begin
   finally
     DNSClientLock.Leave;
   end;
+end;
+
+// A query name is whatever a stranger put in a datagram, and it reaches three
+// log lines below. Labels may hold any byte, so writing one out raw turns the
+// log into a binary file, and gives anyone who can send a packet control
+// characters, terminal escapes and convincing-looking forged lines in a journal
+// somebody will later read. Printable ASCII survives; everything else is shown
+// as its hex value. Found by script/fuzz-test.sh, whose grep stopped counting
+// when the log stopped being text.
+function SafeName(const AName: string): string;
+var
+  LCh: char;
+begin
+  Result:='';
+  for LCh in AName do
+    if (LCh>=#32) and (LCh<=#126) then
+      Result:=Result+LCh
+    else
+      Result:=Result+'\x'+IntToHex(Ord(LCh),2);
+  if Length(Result)>DNS_LOGGED_NAME_MAX then
+    Result:=Copy(Result,1,DNS_LOGGED_NAME_MAX)+'...';
 end;
 
 function DNSClientAllowed(const AAddress: string): boolean;
@@ -215,7 +248,7 @@ begin
           if (ToHex(Query,4,2)='01000001')                           // Standard query & Questions: 1
             and (ToHex(Query,4,Length(Query)-4)='00010001') then     // Type "A" & Class "IN"
             begin
-              Logging(ltDebug, 'DNS Query intercept : '+LDNQuery);
+              Logging(ltDebug, 'DNS Query intercept : '+SafeName(LDNQuery));
               AppendBytes(LQueryResult,Query);
               LQueryResult[2]:=$81;            //Flags: 0x8180 Standard query response, No error
               LQueryResult[3]:=$80;            //Flags: 0x8180 Standard query response, No error
@@ -248,12 +281,20 @@ begin
         end;
     end;
 
+// The list above is short because it was assembled from the devices people
+// happened to own. A name arriving here is either ordinary traffic or a
+// receiver asking for a directory nobody has reported yet, and there is no way
+// to tell them apart from here - so log it and let the person reading decide.
+// This is what doc/DEVICES.md asks a tester to read back.
+  if not LIntercepted then
+    Logging(ltDebug, 'DNS query not intercepted: '+SafeName(LDNQuery));
+
 // Anything we did not intercept was resolved upstream on the caller's behalf.
 // On a public host that would make this an open resolver, so unknown clients
 // get a refusal instead of the answer -- small, and useless for amplification.
   if DNSRestrictForwarding and (not LIntercepted) and (not DNSClientAllowed(ABinding.PeerIP)) then
     begin
-      Logging(ltDebug, 'DNS forwarding refused for '+ABinding.PeerIP+' ('+LDNQuery+')');
+      Logging(ltDebug, 'DNS forwarding refused for '+ABinding.PeerIP+' ('+SafeName(LDNQuery)+')');
       SetLength(LQueryResult,0);
       AppendBytes(LQueryResult,Query);
       if Length(LQueryResult)>=6 then
