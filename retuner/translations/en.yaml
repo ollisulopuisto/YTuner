@@ -1,0 +1,136 @@
+# Without this file Home Assistant labels every option with its raw key, which
+# is how the configuration page ended up looking like a settings dump. Keep a
+# name and a description here for every key in config.yaml's schema.
+configuration:
+  act_as_host:
+    name: Address the receiver should use
+    description: >-
+      The address your receiver is told to fetch stations and artwork from.
+      Leave this blank and Retuner uses this machine's own address, which is
+      right whenever the receiver is on the same network. Only set it when that
+      address is not the one the receiver can reach — for example when this
+      machine sits behind NAT from the receiver's point of view.
+  web_port:
+    name: Radio service port
+    description: >-
+      The port the receiver connects to. Leave this at 80: the firmware asks
+      for port 80 and that is not negotiable from Retuner's side. Changing it
+      only helps if something else puts it back on 80 in front.
+  local_country:
+    name: Your country
+    description: >-
+      Adds a "Local Stations" entry to the receiver's main menu that goes
+      straight to this country, instead of scrolling a few hundred of them with
+      a jog dial. Spell it the way Radio Browser does, for example Finland.
+      Leave blank to hide the entry.
+  resolve_playlists:
+    name: Follow playlist links
+    description: >-
+      Many station links are .m3u or .pls files rather than the audio itself,
+      and firmware of this era often cannot follow one. With this on, Retuner
+      opens the playlist and hands the receiver the stream inside it. Costs one
+      small fetch when a station is selected.
+  relay_https:
+    name: Relay HTTPS-only stations
+    description: >-
+      These receivers have no TLS at all, so an HTTPS-only station simply will
+      not play. With this on, Retuner fetches such a stream itself and re-serves
+      it unencrypted on your network. Turn it on if stations list but refuse to
+      play, and if you use podcasts. The cost is real: a relayed station holds a
+      connection and a thread here for as long as it plays.
+  relay_port:
+    name: Relay port
+    description: Only opened when the relay above is on.
+  dns_service:
+    name: Run the DNS service
+    description: >-
+      Retuner's own DNS server, which answers the vTuner hostname your receiver
+      asks for. Leave this off if you already redirect *.vtuner.com at your
+      router, Pi-hole or AdGuard — that is the tidier route. Note that port 53
+      is often already taken on a Home Assistant machine, in which case one of
+      the two will fail to start.
+  dns_port:
+    name: DNS port
+    description: Only opened when the DNS service above is on.
+  dns_advertise_ip:
+    name: Address to advertise in DNS answers
+    description: >-
+      Only needed when running somewhere the receiver reaches by a different
+      address than this machine sees — a VPS behind NAT, typically. Leave blank
+      on a home network, where answering with the address the query arrived on
+      is correct.
+  dns_restrict_forwarding:
+    name: Do not act as an open resolver
+    description: >-
+      With this on, vTuner names are answered for anybody, but every other
+      lookup is refused unless the client has already reached the radio service.
+      Turn it on if this machine's DNS port is reachable from the internet.
+      Leave it off at home, where other devices may legitimately use it.
+  upstream_dns:
+    name: Upstream DNS servers
+    description: Where non-vTuner lookups are forwarded. Separate several with a semicolon.
+  radiobrowser:
+    name: Radio Browser directory
+    description: >-
+      The community station directory that supplies browsing by genre, country
+      and language. Turn it off to offer only your own stations.
+  cache_type:
+    name: Radio Browser cache
+    description: >-
+      catMemStr keeps the cache in memory and is the right default. catPermMemDB
+      browses faster but first builds a full local station database, which wants
+      a few hundred megabytes and real CPU — on a Raspberry Pi, stay with
+      catMemStr.
+  my_stations:
+    name: My Stations
+    description: >-
+      Your own station list, kept in stations.ini in this add-on's configuration
+      folder. An example is written there on first start.
+  podcasts:
+    name: Podcasts
+    description: >-
+      Turns RSS feeds listed in podcasts.ini into folders, with each episode
+      playable as a station. An example file is written on first start. Podcast
+      episodes are very often HTTPS-only, so turn the relay on as well or they
+      will list but refuse to play.
+  podcast_episodes_limit:
+    name: Episodes per feed
+    description: >-
+      How many episodes to offer, newest first. A long-running weekly show can
+      carry a decade of back catalogue, which is a lot of jog dial.
+  bookmarks:
+    name: Bookmarks
+    description: >-
+      Lets the receiver save favourites with its own remote, if it supports
+      that. They are stored here, not on the receiver.
+  stations_editor:
+    name: Stations editor
+    description: >-
+      A small web page for editing your station list, so it is not something you
+      edit over SSH. It writes configuration files, so it will not start without
+      a password, and it is reachable from anywhere on your network — protected
+      by that password and nothing else.
+  stations_editor_port:
+    name: Stations editor port
+    description: Only opened when the stations editor above is on.
+  stations_editor_user:
+    name: Stations editor username
+    description: Username for the stations editor.
+  stations_editor_password:
+    name: Stations editor password
+    description: >-
+      Required before the stations editor will start. Choose a real one — this
+      page can rewrite your station list.
+  log_level:
+    name: Log detail
+    description: >-
+      Normal is right for everyday use. Debug logs every request the receiver
+      makes, including station names, and is for working out why something will
+      not play.
+  advanced_ini:
+    name: Extra configuration
+    description: >-
+      Anything Retuner supports that the options above do not cover, in ini
+      format including the [Section] header. It is merged into the generated
+      configuration, so a setting here overrides the same setting above and a
+      section that already exists is added to rather than duplicated.

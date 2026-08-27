@@ -57,6 +57,16 @@ jobs:
           for key in ('name', 'version', 'slug', 'description', 'arch'):
               assert cfg.get(key), f'config.yaml is missing {key}'
 
+          # Home Assistant labels an option with its raw key when there is no
+          # translation for it, which is how the config page ends up unreadable.
+          tr = yaml.safe_load(open('retuner/translations/en.yaml'))['configuration']
+          missing = set(cfg['schema']) - set(tr)
+          assert not missing, f'options with no translation: {missing}'
+          stray = set(tr) - set(cfg['schema'])
+          assert not stray, f'translations for options that do not exist: {stray}'
+          blank = [k for k, v in tr.items() if not v.get('name') or not v.get('description')]
+          assert not blank, f'translations missing name/description: {blank}'
+
           # Every option needs a schema entry and vice versa, or the supervisor
           # silently drops it and the service script reads an empty string.
           opts, schema = set(cfg['options']), set(cfg['schema'])
@@ -99,6 +109,11 @@ jobs:
             test -x /opt/retuner/ytuner
             test -f /opt/retuner/cfg/stations.ini
             test -x /etc/s6-overlay/s6-rc.d/retuner/run
+            grep -qx longrun /etc/s6-overlay/s6-rc.d/retuner/type
+            # ordering, not just presence: without this the service is started
+            # in s6's first wave, before the container is wired up
+            test -f /etc/s6-overlay/s6-rc.d/retuner/dependencies.d/base
+            test -f /etc/s6-overlay/s6-rc.d/user/contents.d/retuner
             test -f /usr/bin/merge-ini.awk
             command -v awk >/dev/null
             ldd /opt/retuner/ytuner
