@@ -89,9 +89,14 @@ jobs:
           path: .build/indy
           key: indy-${{ runner.os }}-${{ runner.arch }}-1
 
+      # What the compiler actually targets is its business, not the matrix's.
+      # Chocolatey's Windows package is the 32-bit compiler, so this job builds
+      # i386-win32 and says so rather than mislabelling it x86_64.
       - name: Report the toolchain
+        id: toolchain
         run: |
           fpc -iV
+          echo "target=$(fpc -iTP)-$(fpc -iTO)" >> "$GITHUB_OUTPUT"
           echo "target: $(fpc -iTP)-$(fpc -iTO)"
 
       - name: Build
@@ -107,16 +112,16 @@ jobs:
         if: runner.os != 'Windows'
         run: ./script/smoke-test.sh
 
-      # A release build has no line information, so a crash reports addresses and
-      # nothing else. When the suite fails, rebuild with it and run the binary
-      # by hand: the backtrace is the whole point of having a runner for a
-      # platform none of us can reproduce locally.
-      - name: Backtrace
-        if: failure()
+      # FPC's own backtrace on Darwin prints addresses and no lines, so this asks
+      # two questions a single address cannot answer. First: does it start at
+      # all with the checks on and cmem left out - that build swaps the memory
+      # manager back, so a difference points straight at cmem. Second: what does
+      # a debugger say, since lldb has the symbols FPC's line-info unit cannot
+      # find here.
+      - name: Diagnose the crash
+        if: failure() && runner.os == 'macOS'
         run: |
-          DEBUG=1 ./script/build.sh
           work=$(mktemp -d)
-          cp bin/*/retuner "$work/"
           cat > "$work/retuner.ini" <<'INI'
           [Configuration]
           INIVersion=1.2.2
@@ -133,14 +138,32 @@ jobs:
           Enable=0
           INI
           sed -i.bak 's/^          //' "$work/retuner.ini"
-          cat "$work/retuner.ini"
-          ( cd "$work" && ./retuner ) || true
+
+          echo "=============== checked build, no cmem ==============="
+          CHECKED=1 ./script/build.sh >/dev/null
+          cp bin/*/retuner "$work/"
+          ( cd "$work" && ./retuner & echo $! > "$work/pid" ) || true
+          sleep 6
+          if kill -0 "$(cat "$work/pid")" 2>/dev/null; then
+            echo ">>> the checked build STARTED and is still running"
+            kill "$(cat "$work/pid")" 2>/dev/null || true
+          else
+            echo ">>> the checked build also died"
+          fi
+
+          echo "=============== debug build under lldb ==============="
+          DEBUG=1 ./script/build.sh >/dev/null
+          cp bin/*/retuner "$work/"
+          ( cd "$work" && lldb -b -o run -o "bt all" -o quit -- ./retuner ) &
+          lldb_pid=$!
+          ( sleep 90; kill "$lldb_pid" 2>/dev/null ) &
+          wait "$lldb_pid" || true
 
       - name: Package
         id: package
         run: |
           version=$(sed -n "s/^ *APP_VERSION *= *'\(.*\)';.*/\1/p" src/common.pas)
-          target=${{ matrix.target }}
+          target=${{ steps.toolchain.outputs.target }}
           stage="retuner-$version-$target"
           mkdir -p "$stage/config"
           if [ "${RUNNER_OS}" = Windows ]; then

@@ -91,6 +91,18 @@ chmod +x "$SHIM"
 TARGET_DIR=$ROOT/bin/$OUT_CPU-$OUT_OS
 mkdir -p "$TARGET_DIR"
 
+# Under Git Bash the shell hands out /d/a/... and the compiler is a native
+# Windows program that reads that as \d\a\..., a path that does not exist. It
+# fails as "Can't create object file", which names the symptom and not the
+# cause. cygpath is how the two agree; everywhere else this is the identity.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 if [ -n "${DEBUG:-}" ]; then
   OPTS="-O- -gl -gw"
 elif [ -n "${CHECKED:-}" ]; then
@@ -110,12 +122,14 @@ fi
 
 # shellcheck disable=SC2086
 fpc -MObjFPC -Scghi $OPTS -vew $RESOURCE_FLAG \
-  -Fu"$LAZUTILS_DIR" \
-  -Fu"$INDY_DIR/Core" -Fu"$INDY_DIR/System" -Fu"$INDY_DIR/Protocols" \
-  -Fi"$INDY_DIR/Core" -Fi"$INDY_DIR/System" -Fi"$INDY_DIR/Protocols" \
-  -Fu"$ROOT/src" \
-  -FU"$BUILD_DIR/units" \
-  -o"$TARGET_DIR/retuner$EXE_SUFFIX" \
-  "$ROOT/src/retuner.pas"
+  -Fu"$(winpath "$LAZUTILS_DIR")" \
+  -Fu"$(winpath "$INDY_DIR/Core")" -Fu"$(winpath "$INDY_DIR/System")" \
+  -Fu"$(winpath "$INDY_DIR/Protocols")" \
+  -Fi"$(winpath "$INDY_DIR/Core")" -Fi"$(winpath "$INDY_DIR/System")" \
+  -Fi"$(winpath "$INDY_DIR/Protocols")" \
+  -Fu"$(winpath "$ROOT/src")" \
+  -FU"$(winpath "$BUILD_DIR/units")" \
+  -o"$(winpath "$TARGET_DIR/retuner$EXE_SUFFIX")" \
+  "$(winpath "$ROOT/src/retuner.pas")"
 
 echo "Built $TARGET_DIR/retuner$EXE_SUFFIX"
