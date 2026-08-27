@@ -13,10 +13,19 @@ on:
 permissions:
   contents: read
 
+# A push supersedes the run before it. Without this a hung job holds a runner
+# until the six-hour ceiling, which is how one stalled download outlived several
+# later pushes.
+concurrency:
+  group: binaries-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # Every one of these finishes inside three minutes when it is working.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -76,15 +85,19 @@ jobs:
             'https://downloads.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe',
             'https://master.dl.sourceforge.net/project/freepascal/Win32/3.2.2/fpc-3.2.2.x86_64-win64.exe?viasf=1'
           )
+          # curl.exe rather than Invoke-WebRequest: --max-time is a deadline on
+          # the whole transfer, and a mirror that accepts the connection and
+          # then says nothing is exactly what hung this job for thirteen minutes
+          # when nothing bounded it.
           foreach ($u in $urls) {
             Write-Host "trying $u"
-            try {
-              Invoke-WebRequest -Uri $u -OutFile $exe -UseBasicParsing -MaximumRedirection 10
+            curl.exe -fL --connect-timeout 15 --max-time 240 --retry 1 -o $exe $u
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $exe)) {
               Write-Host "downloaded from $u"
               break
-            } catch {
-              Write-Host "  no: $($_.Exception.Message)"
             }
+            Write-Host "  no: curl exit $LASTEXITCODE"
+            Remove-Item $exe -ErrorAction SilentlyContinue
           }
           if (Test-Path $exe) {
             $p = Start-Process -Wait -PassThru -FilePath $exe `
