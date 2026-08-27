@@ -57,18 +57,28 @@ jobs:
       # Debian packages the LazUtils sources; nobody else does. A sparse
       # checkout takes the two directories the build needs without the rest of
       # Lazarus, which is a large repository to clone for four units.
-      # Chocolatey's package installs the compiler; where it puts it is what the
-      # next step reports, because that is the sort of thing a runner image
-      # changes without telling anyone.
+      # Chocolatey's freepascal package is the i386 compiler and carries no
+      # x86_64 cross-compiler, so it can only produce a 32-bit binary. The
+      # project's own win64 installer is a native x86_64 compiler and writes its
+      # own configuration, which the package also did not do.
       - name: Install the compiler (Windows)
         if: runner.os == 'Windows'
-        run: choco install freepascal --no-progress -y
+        shell: pwsh
+        run: |
+          $url = 'https://download.freepascal.org/ftp/fpc/dist/3.2.2/x86_64-win64/fpc-3.2.2.x86_64-win64.exe'
+          $exe = "$env:RUNNER_TEMP\fpc-win64.exe"
+          Write-Host "downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $exe
+          Write-Host "installing"
+          $p = Start-Process -Wait -PassThru -FilePath $exe `
+                 -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\fpc'
+          Write-Host "installer exit code: $($p.ExitCode)"
 
       - name: Find the compiler (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $roots = 'C:\FPC', 'C:\tools', 'C:\ProgramData\chocolatey\lib',
+          $roots = 'C:\fpc', 'C:\FPC', 'C:\tools', 'C:\ProgramData\chocolatey\lib',
                    'C:\Program Files', 'C:\Program Files (x86)'
           $fpc = $null
           foreach ($r in $roots) {
@@ -110,19 +120,22 @@ jobs:
           git -C "$RUNNER_TEMP/lazarus" sparse-checkout set components/lazutils
           echo "LAZUTILS_DIR=$RUNNER_TEMP/lazarus/components/lazutils" >> "$GITHUB_ENV"
 
-      # Chocolatey installs the 32-bit compiler. A 32-bit binary would run on
-      # 64-bit Windows, but shipping one in 2026 is an accident of packaging
-      # rather than a decision, so use the x86_64 cross-compiler that sits
-      # beside it when it is there - and say so plainly when it is not.
-      - name: Aim at 64-bit Windows
+      # A native x86_64 compiler needs no -P flag; this is here to fail loudly
+      # rather than quietly shipping a 32-bit binary if the install ever changes
+      # back to one.
+      - name: Confirm the Windows target
         if: runner.os == 'Windows'
         run: |
           ls "$FPC_BIN"
-          if [ -f "$FPC_BIN/ppcrossx64.exe" ]; then
-            echo "FPC_FLAGS=-Px86_64 -Twin64" >> "$GITHUB_ENV"
-            echo ">>> cross-compiler present: building x86_64-win64"
-          else
-            echo ">>> no ppcrossx64.exe here; this runner can only make i386-win32"
+          echo "compiler targets: $(fpc -iTP)-$(fpc -iTO)"
+          if [ "$(fpc -iTP)" != x86_64 ]; then
+            if [ -f "$FPC_BIN/ppcrossx64.exe" ]; then
+              echo "FPC_FLAGS=-Px86_64 -Twin64" >> "$GITHUB_ENV"
+              echo ">>> using the x86_64 cross-compiler"
+            else
+              echo "::error::this compiler makes $(fpc -iTP) and has no x86_64 cross-compiler"
+              exit 1
+            fi
           fi
 
       - name: Cache Indy checkout
