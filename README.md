@@ -4,6 +4,8 @@
 
 # YTuner
 
+> **This is Retuner, a maintained fork of [YTuner](https://github.com/coffeegreg/YTuner).** It carries bug fixes upstream has not taken, builds with the Free Pascal compiler your distribution ships, and is tested in CI. See [doc/RETUNER.md](doc/RETUNER.md) for what changed, why the fork is named the way it is, and what is planned — including Spotify playback on receivers that have no Spotify Connect of their own.
+
 YTuner is a simple project inspired by [YCast](https://github.com/milaq/YCast) but rewritten from scratch and greatly improved.
 Designed to replace vTuner internet radio service and dedicated to all users of AVRs made by Yamaha, Denon, Onkyo, Marantz, Pioneer, Harman Kardon, Pro-Ject and others with built-in vTuner support.
 If you own one (or even more) of the vTuner-enabled AVRs mentioned above and want to enjoy free internet radio stations on your device as before, and be sure that your device's streaming service won't suddenly end, you should consider using YTuner.
