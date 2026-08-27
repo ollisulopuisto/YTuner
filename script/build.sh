@@ -49,11 +49,20 @@ fi
 # ---- Embedded SQL resources --------------------------------------------------
 sh "$ROOT/script/zip-sql.sh" >/dev/null
 
+# ---- Target ------------------------------------------------------------------
+# Empty means "whatever this compiler builds by default". Set it to cross-
+# compile, e.g. FPC_FLAGS='-Px86_64 -Twin64' on a 32-bit Windows compiler that
+# carries the x86_64 cross-compiler alongside it. The same flags have to reach
+# the queries below, or the output lands in a directory named after the host.
+FPC_FLAGS=${FPC_FLAGS:-}
+
 # ---- Resource compiler -------------------------------------------------------
 # FPC drives the resource step with windres-style arguments. On ELF targets we
 # have fpcres instead, so bridge the two command lines.
-OUT_CPU=$(fpc -iTP)
-OUT_OS=$(fpc -iTO)
+# shellcheck disable=SC2086  # FPC_FLAGS is a deliberately split flag list
+OUT_CPU=$(fpc $FPC_FLAGS -iTP)
+# shellcheck disable=SC2086  # ditto
+OUT_OS=$(fpc $FPC_FLAGS -iTO)
 BUILD_DIR=$ROOT/.build/$OUT_CPU-$OUT_OS
 mkdir -p "$BUILD_DIR/units"
 
@@ -121,7 +130,7 @@ else
 fi
 
 # shellcheck disable=SC2086
-fpc -MObjFPC -Scghi $OPTS -vew $RESOURCE_FLAG \
+fpc $FPC_FLAGS -MObjFPC -Scghi $OPTS -vew $RESOURCE_FLAG \
   -Fu"$(winpath "$LAZUTILS_DIR")" \
   -Fu"$(winpath "$INDY_DIR/Core")" -Fu"$(winpath "$INDY_DIR/System")" \
   -Fu"$(winpath "$INDY_DIR/Protocols")" \

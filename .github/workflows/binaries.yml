@@ -30,9 +30,9 @@ jobs:
           # its replacement.
           - os: macos-15-intel
             target: x86_64-darwin
-          # Named for the platform, not the architecture: chocolatey's package
-          # is the 32-bit compiler, so this produces i386-win32 today. What the
-          # artifact is called comes from the compiler either way.
+          # Named for the platform: which architecture comes out depends on
+          # whether the installed compiler carries the x86_64 cross-compiler,
+          # and the artifact is named from what it actually targeted.
           - os: windows-latest
             target: windows
     defaults:
@@ -109,6 +109,21 @@ jobs:
             https://gitlab.com/freepascal.org/lazarus/lazarus.git "$RUNNER_TEMP/lazarus"
           git -C "$RUNNER_TEMP/lazarus" sparse-checkout set components/lazutils
           echo "LAZUTILS_DIR=$RUNNER_TEMP/lazarus/components/lazutils" >> "$GITHUB_ENV"
+
+      # Chocolatey installs the 32-bit compiler. A 32-bit binary would run on
+      # 64-bit Windows, but shipping one in 2026 is an accident of packaging
+      # rather than a decision, so use the x86_64 cross-compiler that sits
+      # beside it when it is there - and say so plainly when it is not.
+      - name: Aim at 64-bit Windows
+        if: runner.os == 'Windows'
+        run: |
+          ls "$FPC_BIN"
+          if [ -f "$FPC_BIN/ppcrossx64.exe" ]; then
+            echo "FPC_FLAGS=-Px86_64 -Twin64" >> "$GITHUB_ENV"
+            echo ">>> cross-compiler present: building x86_64-win64"
+          else
+            echo ">>> no ppcrossx64.exe here; this runner can only make i386-win32"
+          fi
 
       - name: Cache Indy checkout
         uses: actions/cache@v4
