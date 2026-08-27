@@ -716,6 +716,10 @@ begin
   end;
   if LURL<>'' then
     begin
+// Unwrap here rather than when the listing is built: a category page would
+// otherwise have to fetch a playlist per station before it could answer.
+      if ResolvePlaylists and LooksLikePlaylist(LURL) then
+        LURL:=StripHttps(ResolveStreamURL(LURL),AReq);
       ARes.SetCustomHeader(HTTP_HEADER_LOCATION,LURL);
       LCode:=HTTPCodeRedirect;
     end
@@ -1025,6 +1029,8 @@ begin
       Name:=Station.MSName;
       Description:='My favorite "'+Station.MSName+'"';
       URL:=StripHttps(Station.MSURL,AReq);
+      if ResolvePlaylists and LooksLikePlaylist(URL) then
+        URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
 
       Icon:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_ICON+IconExtension+'?'+PATH_PARAM_ID+'='+Station.MSID;
       Genre:=Category;
@@ -1049,6 +1055,10 @@ begin
         end;
       Description:=Name+' : '+RBSHomePageURL;
       URL:=StripHttps(RBSURL,AReq);
+// Hand the AVR our own play endpoint so the playlist is unwrapped when the
+// station is actually selected, not while the listing is being rendered.
+      if ResolvePlaylists and LooksLikePlaylist(URL) then
+        URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
       if RBSTags='' then
         Genre:=AReq.RouteParams[PATH_CATEGORY]
       else
