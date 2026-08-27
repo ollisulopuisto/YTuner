@@ -19,11 +19,25 @@ Assistant box behind an nginx proxy is the usual one. Three ways out:
    is the wildcard.
 3. Give Retuner a machine. That is this document.
 
-A machine of its own is not a heavy answer. Serving radio, the process holds
-about 8 MB resident behind a 4.6 MB binary, so 1 vCPU, 1 GB of RAM and 8 GB of
-disk is generous. And it puts the part of this program that decodes files chosen
-by strangers — station logos come from whoever submitted the station — somewhere
-of its own, which is worth something on a box that also runs your house.
+A machine of its own is not a heavy answer. Measured rather than guessed:
+
+| | |
+|---|---|
+| the running service | ~8 MB resident, behind a 4.6 MB binary |
+| a full build, compiler and linker at their peak | ~144 MB |
+| the source tree, the Indy clone and the build output | ~85 MB |
+
+So one core and 512 MB of RAM runs it comfortably, and 8 GB of disk is generous.
+The thing that wants more memory is the **installer**, not Retuner: Debian's
+graphical installer expects well over a gigabyte. Give the VM 2 GB while you
+install, then shut it down and turn the memory back down — or use the text-mode
+installer, which is far less hungry. If memory is genuinely scarce, build the
+binary on another machine of the same architecture and copy just the binary
+across; then the machine only ever needs the 8 MB.
+
+And it puts the part of this program that decodes files chosen by strangers —
+station logos come from whoever submitted the station — somewhere of its own,
+which is worth something on a box that also runs your house.
 
 ## The machine
 
