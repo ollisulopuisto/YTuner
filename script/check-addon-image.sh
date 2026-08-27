@@ -10,8 +10,10 @@
 # can prove; script/smoke-test.sh covers it running.
 
 echo "--- /opt/retuner"
+# shellcheck disable=SC2012  # a listing for a human to read, on a fixed path
 ls -la /opt/retuner /opt/retuner/cfg 2>&1 | head -40
 echo "--- /etc/s6-overlay/s6-rc.d"
+# shellcheck disable=SC2012  # ditto
 ls -la /etc/s6-overlay/s6-rc.d 2>&1 | head -40
 find /etc/s6-overlay/s6-rc.d -maxdepth 3 \
      \( -path "*retuner*" -o -name contents.d \) -exec ls -ld {} + 2>&1
