@@ -12,6 +12,7 @@
 # Override autodetection with INDY_DIR / LAZUTILS_DIR if you keep them elsewhere.
 set -eu
 
+# shellcheck disable=SC1007  # CDPATH= is a deliberate empty assignment for cd
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
@@ -85,6 +86,17 @@ mkdir -p "$TARGET_DIR"
 
 if [ -n "${DEBUG:-}" ]; then
   OPTS="-O- -gl -gw"
+elif [ -n "${CHECKED:-}" ]; then
+  # Range, overflow and object-method-call checking. These turn a class of
+  # latent bug into a loud failure at the point it happens rather than a wrong
+  # answer somewhere later, which is worth a build that CI runs the test suites
+  # against even though the shipped binary does not carry the cost.
+  #
+  # Deliberately NOT -gh here. heaptrc links in and reports, but it accounts for
+  # only a handful of allocations on this program -- nowhere near what a run
+  # actually makes -- so it reports zero leaks whether or not there are any. A
+  # green light that cannot go red is worse than no light.
+  OPTS="-O1 -Cr -Co -CR -gl"
 else
   OPTS="-O2 -Xs"
 fi

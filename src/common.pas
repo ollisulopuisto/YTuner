@@ -29,13 +29,22 @@ type
 
 const
   APP_NAME = 'Retuner';
-// The version is the YTuner release this fork is based on, which is also what
-// INI_VERSION below tracks -- so it stays as it is rather than restarting at
-// 0.1. Greg P. keeps his line in the banner because nearly all of this code is
-// his: the notice in LICENSE.txt is the licence requirement, this is the
-// courtesy that ought to go with it.
-  APP_VERSION = '1.2.6';
-  APP_COPYRIGHT = 'a fork of YTuner '+APP_VERSION+' by Greg P. (MIT) - https://github.com/ollisulopuisto/retuner';
+// CalVer: YY.MM.DD.N, N being the build within that day. The date a build was
+// cut is the useful thing to know about it -- semantic versioning would promise
+// an API this has never had.
+  APP_VERSION = '26.08.27.1';
+// The YTuner release this fork started from. Separate from APP_VERSION because
+// it means something different and does not move when we cut a build: putting
+// a Retuner version in the credit line below would attribute our releases to
+// Greg P., which is the opposite of the point.
+  UPSTREAM_VERSION = '1.2.6';
+// Greg P. keeps his line in the banner because nearly all of this code is his.
+// The notice in LICENSE.txt is the licence requirement; this is the courtesy
+// that ought to go with it.
+  APP_COPYRIGHT = 'a fork of YTuner '+UPSTREAM_VERSION+' by Greg P. (MIT) - https://github.com/ollisulopuisto/retuner';
+// NOT CalVer, and not tied to APP_VERSION: this is compared against the
+// INIVersion= line in every existing config file. It moves only when the config
+// format actually changes, or every install is told its file is outdated.
   INI_VERSION = '1.2.2';
 
   RETUNER_USER_AGENT = 'Retuner';

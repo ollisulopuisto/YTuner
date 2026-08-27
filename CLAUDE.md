@@ -1,0 +1,89 @@
+# Working on Retuner
+
+Retuner is a fork of [YTuner](https://github.com/coffeegreg/YTuner) by Greg P.,
+MIT licensed, and nearly all of this code is his. Attribution is not decoration
+here: the banner, the README, `LICENSE.txt` and the program header all name him,
+and none of that gets swept up in a rename or tidied away.
+
+Free Pascal 3.2.2 — what Debian, Ubuntu and Raspberry Pi OS actually ship, not
+trunk. If something needs a newer compiler it does not go in.
+
+## House rules
+
+**Red-green.** Write the failing test first, run it, watch it fail *for the
+reason you expect*, then implement. A test that has never been red has not been
+tested. When a bug is found before its test, write the test and then reintroduce
+the bug to confirm the test catches it — that is what the mutation checks in
+`test-radiobrowser.sh`'s history were for.
+
+**CalVer.** `APP_VERSION` is `YY.MM.DD.N`. Three constants that look similar and
+are not:
+
+| constant | means | moves when |
+|---|---|---|
+| `APP_VERSION` | this build | every release |
+| `UPSTREAM_VERSION` | the YTuner release forked from | ~never |
+| `INI_VERSION` | config-format compatibility | the format changes |
+
+`INI_VERSION` is compared against `INIVersion=` in every user's config file.
+Bump it casually and every install is told its file is outdated. The add-on's
+`version:` in `retuner/config.yaml` tracks `APP_VERSION`.
+
+**Lint everything, at the strictest setting available.** Shell scripts pass
+`shellcheck --severity=style`. Note that CI's shellcheck is older than a typical
+local one, so "clean here" is not "clean there" — lint at `--severity=style`
+before pushing. `CHECKED=1 ./script/build.sh` adds `-Cr -Co -CR`, and CI runs
+every suite against that binary.
+
+Deliberately absent: `-gh` (heaptrc). It links and reports, but accounts for a
+handful of allocations on this program — nowhere near a real run — so it reports
+zero leaks whether or not there are any. A green light that cannot go red is
+worse than no light. If you can make it see the whole heap, it becomes worth
+having.
+
+**Comments say why, not what.** Where a line exists because of a specific bug,
+name the bug. `// Lines without '=' reserved a slot they never filled, so they
+surfaced as blank entries on the AVR` is worth writing; `// loop over stations`
+is not.
+
+## Testing
+
+No unit test framework. The three suites start a real binary and speak HTTP to
+it:
+
+    ./script/smoke-test.sh          vTuner protocol, both path shapes, legacy routes
+    ./script/test-presets.sh        fetch, validate, cache, merge, fallbacks
+    ./script/test-radiobrowser.sh   filtering, and awkward upstream responses
+
+Each takes a binary path as `$1` and needs no network — mocks stand in for
+radio-browser and the preset repository. That makes them an implementation-
+independent spec: they would run against a rewrite in another language as-is.
+
+**Give every test phase its own ports.** Sharing them lets a mock that failed to
+bind leave the previous phase's server answering, which produces confident and
+completely false results. This has happened.
+
+## Things that look safe and are not
+
+**Strings written into files outlive the code.** `/ytuner/` URLs live in
+bookmarks an AVR saved years ago and replays verbatim; `ytunerhost` is the
+placeholder inside those files. Both are still served and read for that reason.
+Anything persisted needs a migration, and the migration needs a test.
+
+**Per-AVR settings live in `config/<mac>.ini`, not `avr.ini`.** `avr.ini` is the
+template read at startup. Filters written anywhere else silently do nothing.
+
+**Advertised URLs never carry a port.** Every one is `'http://' + URLHost + path`,
+so the service assumes it is reachable on port 80 at `act_as_host`. Changing
+`WebServerPort` alone does not move it; it only stops it answering where it says
+it is.
+
+**The main web server honours `Application.Address`; the web GUI cannot.**
+`TFPHTTPServer` has no `Address` property on 3.2.2, so the GUI binds every
+interface and filters per connection instead.
+
+## Upstream
+
+Fixes that are not fork-specific are worth offering back. Do not claim in the
+docs that they have been offered unless a pull request actually exists —
+`doc/RETUNER.md` said so once when it was not true.
