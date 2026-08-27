@@ -17,7 +17,7 @@ RUN apt-get update \
       libc6-dev libsqlite3-dev \
  && rm -rf /var/lib/apt/lists/*
 
-ARG RETUNER_REPO=https://github.com/ollisulopuisto/YTuner.git
+ARG RETUNER_REPO=https://github.com/ollisulopuisto/retuner.git
 ARG RETUNER_REF=master
 RUN git clone --depth 1 --branch "${RETUNER_REF}" "${RETUNER_REPO}" /src
 
@@ -40,5 +40,5 @@ COPY rootfs /
 LABEL \
     org.opencontainers.image.title="Home Assistant Add-on: Retuner" \
     org.opencontainers.image.description="Internet radio for AV receivers whose vTuner service was shut down" \
-    org.opencontainers.image.source="https://github.com/ollisulopuisto/YTuner" \
+    org.opencontainers.image.source="https://github.com/ollisulopuisto/retuner" \
     org.opencontainers.image.licenses="MIT"
