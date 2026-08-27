@@ -92,11 +92,11 @@ elif [ -n "${CHECKED:-}" ]; then
   # answer somewhere later, which is worth a build that CI runs the test suites
   # against even though the shipped binary does not carry the cost.
   #
-  # Deliberately NOT -gh here. heaptrc links in and reports, but it accounts for
-  # only a handful of allocations on this program -- nowhere near what a run
-  # actually makes -- so it reports zero leaks whether or not there are any. A
-  # green light that cannot go red is worse than no light.
-  OPTS="-O1 -Cr -Co -CR -gl"
+  # -dUSE_HEAPTRC rather than -gh: see the uses clause in src/retuner.pas. -gh
+  # puts heaptrc first, where cmem's initialization then replaces the memory
+  # manager underneath it; the define lists heaptrc after cmem so it wraps it
+  # and actually sees the program's allocations.
+  OPTS="-O1 -Cr -Co -CR -gl -gh -dNO_CMEM"
 else
   OPTS="-O2 -Xs"
 fi
