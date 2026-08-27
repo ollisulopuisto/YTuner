@@ -30,7 +30,7 @@ check() {
 }
 
 check "the binary is present and executable" \
-  "test -x /opt/retuner/ytuner"
+  "test -x /opt/retuner/retuner"
 check "the bundled station list came across" \
   "test -f /opt/retuner/cfg/stations.ini"
 check "the s6 run script is executable" \
@@ -48,9 +48,9 @@ check "the ini merge script came across" \
 check "awk is installed" "command -v awk"
 
 echo "--- ldd"
-ldd /opt/retuner/ytuner || true
+ldd /opt/retuner/retuner || true
 check "no shared library is missing" \
-  '! ldd /opt/retuner/ytuner | grep -q "not found"'
+  '! ldd /opt/retuner/retuner | grep -q "not found"'
 
 if [ "$rc" -ne 0 ]; then
   echo "add-on image is not right; see FAIL above"

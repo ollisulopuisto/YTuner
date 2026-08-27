@@ -1,6 +1,6 @@
 unit ResStreamUnZipper;
 
-// YTuner: Resource unzipper simple calss unit.
+// Retuner: Resource unzipper simple calss unit.
 
 {$mode objfpc}{$H+}
 

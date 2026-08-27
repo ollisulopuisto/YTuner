@@ -1,6 +1,6 @@
 unit dnsserver;
 
-// YTuner: DNS proxy serwer unit.
+// Retuner: DNS proxy serwer unit.
 
 {$mode ObjFPC}{$H+}
 
@@ -27,7 +27,7 @@ const
 // protocol on a deeper path -- see the Frontier checks in script/smoke-test.sh.
 // Deliberately NOT here: frontier-nuvola.net, which is the live successor.
 // Intercepting a service that still works would break it.
-// This must stay in step with InterceptDNs in cfg/ytuner.ini: the Home
+// This must stay in step with InterceptDNs in cfg/retuner.ini: the Home
 // Assistant add-on does not write that key, so this constant is what its users
 // actually get.
   INTERCEPT_DNS = '*.vtuner.com,*.radiosetup.com,*.my-noxon.net,'+

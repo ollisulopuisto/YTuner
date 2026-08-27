@@ -1,6 +1,6 @@
 unit my_stations;
 
-// Ytuner : Custom stations list files support unit.
+// Retuner : Custom stations list files support unit.
 //
 // The list a receiver browses is assembled from more than one file: the user's
 // own stations.ini (or .yaml), plus whatever country preset files have been
@@ -44,7 +44,7 @@ type
 
 function GetMyStationByID(AID: string): TMSStation;
 
-// Where the user's own station file lives. One definition, because ytuner, the
+// Where the user's own station file lives. One definition, because Retuner, the
 // web editor and the reload path must all mean the same file by it.
 function MyStationsFilePath: string;
 

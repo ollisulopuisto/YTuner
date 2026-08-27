@@ -1,6 +1,6 @@
 unit httpserver;
 
-// YTuner: Web serwer unit.
+// Retuner: Web serwer unit.
 
 {$mode ObjFPC}{$H+}
 
@@ -50,7 +50,11 @@ const
   PATH_FAVXML_ASP = 'favxml.asp';
   PATH_NAVXML_ASP = 'navxml.asp';
   PATH_SEARCH_ASP = 'search.asp';
-  PATH_ROOT = 'ytuner';
+  PATH_ROOT = 'retuner';
+// Bookmarks an AVR saved before the rename contain absolute /ytuner/ URLs, and
+// the receiver replays them verbatim. Every root route is therefore registered
+// under this prefix as well -- see RegisterRootRoutes. Served, never generated.
+  PATH_ROOT_LEGACY = 'ytuner';
   PATH_PLAY = 'play';
   PATH_STATION = 'station';
   PATH_SEARCH = 'search';
@@ -138,22 +142,35 @@ function ResolveRelayStationURL(const AID: string): string;
 implementation
 
 procedure RegisterServerRoutes;
+
+// Every route under the application root, registered under a given prefix.
+// Called once for PATH_ROOT and once for PATH_ROOT_LEGACY: a bookmark stored by
+// an AVR before the rename holds an absolute /ytuner/ URL and is replayed as-is,
+// so dropping the old prefix would break every bookmark already saved.
+  procedure RegisterRootRoutes(const APrefix: string);
+  begin
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_MY_STATIONS, @GetMyStationsCategories, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_MY_STATIONS+'/:'+PATH_CATEGORY, @GetMyStationsOfCategory, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_PODCASTS, @GetPodcastFeedList, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_PODCASTS+'/:'+PATH_CATEGORY, @GetPodcastFeedEpisodes, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_ICON+IconExtension, @GetIcon, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_RADIOBROWSER, @GetRadioBrowserRootDirectory, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_RADIOBROWSER+'/:'+PATH_CATEGORY_TYPE, @GetRadioBrowserCategoryType, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_RADIOBROWSER+'/:'+PATH_CATEGORY_TYPE+'/:'+PATH_CATEGORY, @GetRadioBrowserCategoryStations, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_BOOKMARK, @GetBookmarkStations, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_ABOUT, @GetAbout, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_EMPTY, @GetEmpty, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_PLAY, @PlayStation, false);
+    HTTPRouter.RegisterRoute('/'+APrefix+'/'+PATH_SEARCH, @GetSearchedStations, false);
+  end;
+
 begin
   HTTPRouter.RegisterRoute('/', @DefaultPage, true);
   HTTPRouter.RegisterRoute('/'+PATH_SETUPAPP+'/*/'+PATH_LOGINXML_ASP, @SetupAppLoginXMLPage, false);
   HTTPRouter.RegisterRoute('/'+PATH_SETUPAPP+'/*/'+PATH_STATXML_ASP, @GetStation, false);
   HTTPRouter.RegisterRoute('/'+PATH_SETUPAPP+'/'+PATH_FAVXML_ASP, @BookmarkService, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_MY_STATIONS, @GetMyStationsCategories, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_MY_STATIONS+'/:'+PATH_CATEGORY, @GetMyStationsOfCategory, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_PODCASTS, @GetPodcastFeedList, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_PODCASTS+'/:'+PATH_CATEGORY, @GetPodcastFeedEpisodes, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_ICON+IconExtension, @GetIcon, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_RADIOBROWSER, @GetRadioBrowserRootDirectory, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_RADIOBROWSER+'/:'+PATH_CATEGORY_TYPE, @GetRadioBrowserCategoryType, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_RADIOBROWSER+'/:'+PATH_CATEGORY_TYPE+'/:'+PATH_CATEGORY, @GetRadioBrowserCategoryStations, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_BOOKMARK, @GetBookmarkStations, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_ABOUT, @GetAbout, false);
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_EMPTY, @GetEmpty, false);
+  RegisterRootRoutes(PATH_ROOT);
+  RegisterRootRoutes(PATH_ROOT_LEGACY);
 
 // This endpoint is for redirect for vTuner radio station link
   HTTPRouter.RegisterRoute('/'+PATH_SETUPAPP+'/*/'+PATH_VTUNER_ASP, @VTunerRedirect, false);
@@ -163,10 +180,8 @@ begin
 ///////////////////////////////////////////////
 
 //Play station ?
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_PLAY, @PlayStation, false);
 
 //Search stations?
-  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_SEARCH, @GetSearchedStations, false);
 
 //Some AVR use "NavXML.asp" and "gofile" query parameter with values like "S-ByLocation" or "LocationLevelTwo".
 //We need to get some documentation and/or investigate some logs from users.
@@ -584,7 +599,7 @@ begin
                 LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctTIFF];
                 {$ENDIF}
                 AddHeader(HTTP_HEADER_ACCEPT,LHeaderAcceptStr);
-                AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+                AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
                 try
                   Logging(ltDebug, MSG_GETTING+' '+LURL);
                   Get(LURL,LStream);
@@ -1108,7 +1123,7 @@ procedure ServerResponse(AResponseCode: integer; AResponseContentType: TResponse
 begin
   with ARes do
     begin
-      SetCustomHeader(HTTP_HEADER_SERVER,YTUNER_USER_AGENT+'/'+APP_VERSION);
+      SetCustomHeader(HTTP_HEADER_SERVER,RETUNER_USER_AGENT+'/'+APP_VERSION);
       Code:=AResponseCode;
       ContentType:=HTTP_RESPONSE_CONTENT_TYPE[AResponseContentType];
       ContentStream:=AData;
@@ -1121,7 +1136,7 @@ procedure ServerResponse(AResponseCode: integer; AResponseContentType: TResponse
 begin
   with ARes do
     begin
-      SetCustomHeader(HTTP_HEADER_SERVER,YTUNER_USER_AGENT+'/'+APP_VERSION);
+      SetCustomHeader(HTTP_HEADER_SERVER,RETUNER_USER_AGENT+'/'+APP_VERSION);
       Code:=AResponseCode;
       ContentType:=HTTP_RESPONSE_CONTENT_TYPE[AResponseContentType];
       Content:=AData;

@@ -1,6 +1,6 @@
 unit radiobrowserdb;
 
-// YTuner: Radio-browser.info DB cache unit.
+// Retuner: Radio-browser.info DB cache unit.
 
 {$mode ObjFPC}{$H+}
 

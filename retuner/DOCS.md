@@ -145,7 +145,7 @@ holds the things you curate:
 
 - **`<mac>.xml` / `bookmark.xml`** — bookmarks saved from the remote.
 
-`ytuner.ini` is **generated from the options above every time the add-on
+`retuner.ini` is **generated from the options above every time the add-on
 starts**, so editing it does nothing. Change the options instead, or use
 `advanced_ini`.
 

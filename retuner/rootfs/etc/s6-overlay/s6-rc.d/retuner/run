@@ -1,7 +1,7 @@
 #!/usr/bin/with-contenv bashio
-# Turns the add-on's options into ytuner.ini and starts the service.
+# Turns the add-on's options into retuner.ini and starts the service.
 #
-# ytuner.ini is generated on every start, so it is not somewhere to keep hand
+# retuner.ini is generated on every start, so it is not somewhere to keep hand
 # edits -- the add-on options are. Everything a person actually curates
 # (stations, per-AVR settings, bookmarks) lives in /config, which is the add-on
 # configuration folder and is never rewritten here.
@@ -11,10 +11,18 @@ APP_DIR=/opt/retuner
 # Retuner reads its ini from the directory the binary is in, which lives in the
 # container's own filesystem and is discarded whenever the add-on is updated.
 # The real file is kept in /data and linked into place.
-INI=/data/ytuner.ini
+INI=/data/retuner.ini
+LEGACY_INI=/data/ytuner.ini
+# An add-on installed before the rename keeps its settings in ytuner.ini. Carry
+# them across rather than starting from defaults, which would not look like a
+# loss -- it would look like the configuration had been ignored.
+if [ ! -f "${INI}" ] && [ -f "${LEGACY_INI}" ]; then
+    mv "${LEGACY_INI}" "${INI}"
+    bashio::log.info "Renamed ytuner.ini to retuner.ini in /data."
+fi
 
 mkdir -p /config /data/cache /data/db
-ln -sf "${INI}" "${APP_DIR}/ytuner.ini"
+ln -sf "${INI}" "${APP_DIR}/retuner.ini"
 
 # Seed the stations file on first run so there is a working example to edit.
 # avr.ini is deliberately not seeded: Retuner writes its own with no filtering,
@@ -145,4 +153,4 @@ if bashio::config.true 'dns_service'; then
 fi
 
 bashio::log.info "Starting Retuner on port $(bashio::config 'web_port')."
-exec "${APP_DIR}/ytuner"
+exec "${APP_DIR}/retuner"

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Start a freshly built YTuner against a throwaway config and check that it
+# Start a freshly built Retuner against a throwaway config and check that it
 # actually serves the vTuner endpoints an AVR hits first.
 #
-#   ./script/smoke-test.sh [path-to-ytuner]
+#   ./script/smoke-test.sh [path-to-retuner]
 #
 # Radio-browser and the DNS server are switched off so the test stays offline
 # and needs no privileged ports.
@@ -13,7 +13,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BIN=${1:-}
 if [ -z "$BIN" ]; then
   # shellcheck disable=SC2012  # one glob under bin/, named by the target triple
-  BIN=$(ls "$ROOT"/bin/*/ytuner 2>/dev/null | head -1) \
+  BIN=$(ls "$ROOT"/bin/*/retuner 2>/dev/null | head -1) \
     || { echo "error: no binary found; run script/build.sh first" >&2; exit 1; }
 fi
 [ -x "$BIN" ] || { echo "error: $BIN is not executable" >&2; exit 1; }
@@ -30,8 +30,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-cp "$BIN" "$WORK/ytuner"
-cat > "$WORK/ytuner.ini" <<EOF
+cp "$BIN" "$WORK/retuner"
+cat > "$WORK/retuner.ini" <<EOF
 [Configuration]
 INIVersion=1.2.2
 MessageInfoLevel=4
@@ -49,7 +49,7 @@ Enable=0
 Enable=1
 EOF
 
-( cd "$WORK" && ./ytuner > server.log 2>&1 ) &
+( cd "$WORK" && ./retuner > server.log 2>&1 ) &
 PID=$!
 
 # Wait for the listener rather than sleeping a fixed amount.
@@ -82,8 +82,8 @@ check() {
 echo "Smoke testing $BIN on port $PORT"
 check "login token handshake" "/setupapp/x/loginxml.asp?token=0"        "EncryptedToken"
 check "main menu"             "/setupapp/x/loginxml.asp?mac=aabbccddee" "<ListOfItems>"
-check "about page"            "/ytuner/about?mac=aabbccddee"            "Welcome to Retuner"
-check "empty folder message"  "/ytuner/empty?mac=aabbccddee"            "<ItemType>Display</ItemType>"
+check "about page"            "/retuner/about?mac=aabbccddee"            "Welcome to Retuner"
+check "empty folder message"  "/retuner/empty?mac=aabbccddee"            "<ItemType>Display</ItemType>"
 
 # Frontier Silicon radios (Hama, Medion, Technisat, Roberts, Pure, Sangean,
 # Karcher and the rest) speak the same vTuner protocol as the AVRs, but ask for
@@ -93,6 +93,15 @@ check "empty folder message"  "/ytuner/empty?mac=aabbccddee"            "<ItemTy
 # asserted here rather than left to chance. A router change that narrowed the
 # wildcard to a single segment would otherwise break every Frontier device
 # without breaking a single test.
+# An AVR that saved a bookmark before the rename replays the absolute URL it
+# stored, which begins /ytuner/. Those routes are still registered for exactly
+# that reason, so the guarantee is asserted rather than assumed.
+echo "Bookmarks saved before the rename"
+check "the old root path still serves" \
+  "/ytuner/about?mac=aabbccddee"                                  "Welcome to Retuner"
+check "and so do its sub-paths" \
+  "/ytuner/empty?mac=aabbccddee"                                  "<ItemType>Display</ItemType>"
+
 echo "Frontier Silicon path shape"
 check "deep path token handshake" \
   "/setupapp/karcher/asp/BrowseXML/loginXML.asp?token=0"        "EncryptedToken"

@@ -69,7 +69,7 @@ dead:
 
 ## How Retuner uses them
 
-Set the countries in the add-on's configuration, or in `ytuner.ini`:
+Set the countries in the add-on's configuration, or in `retuner.ini`:
 
 ```ini
 [Presets]

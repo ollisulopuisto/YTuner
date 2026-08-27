@@ -1,6 +1,6 @@
 unit radiobrowser;
 
-// YTuner: Radio-browser.info API feature support unit.
+// Retuner: Radio-browser.info API feature support unit.
 
 {$mode ObjFPC}{$H+}
 
@@ -205,7 +205,7 @@ begin
       ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
       IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
       AddHeader(HTTP_HEADER_ACCEPT,HTTP_RESPONSE_CONTENT_TYPE[ctJSON]);
-      AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+      AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
 // Kept raw: stripping ';' here would corrupt Shoutcast stream URLs such as
 // http://host:8000/;. Per-field sanitising happens in SetRBStation instead.
       Result:=Get(RBAPIURL+'/json/'+AURL);

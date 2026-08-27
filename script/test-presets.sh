@@ -2,7 +2,7 @@
 # End-to-end test for country presets: fetch, validate, cache, merge, and the
 # fallback when the preset repository is unreachable or serving rubbish.
 #
-#   ./script/test-presets.sh [path-to-ytuner]
+#   ./script/test-presets.sh [path-to-retuner]
 #
 # A local HTTP server stands in for the preset repository, so this needs no
 # network access and no privileged ports.
@@ -13,7 +13,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BIN=${1:-}
 if [ -z "$BIN" ]; then
   # shellcheck disable=SC2012  # one glob under bin/, named by the target triple
-  BIN=$(ls "$ROOT"/bin/*/ytuner 2>/dev/null | head -1) \
+  BIN=$(ls "$ROOT"/bin/*/retuner 2>/dev/null | head -1) \
     || { echo "error: no binary found; run script/build.sh first" >&2; exit 1; }
 fi
 [ -x "$BIN" ] || { echo "error: $BIN is not executable" >&2; exit 1; }
@@ -39,7 +39,7 @@ say_ok()   { echo "  ok   $1"; }
 say_fail() { echo "  FAIL $1"; fail=1; }
 
 mkdir -p "$WORK/repo"
-cp "$BIN" "$WORK/ytuner"
+cp "$BIN" "$WORK/retuner"
 
 # The stand-in repository. One of its categories collides with a category in
 # the user own file, so the merge is actually exercised.
@@ -74,7 +74,7 @@ stop_repo() {
   fi
 }
 
-cat > "$WORK/ytuner.ini" <<INI
+cat > "$WORK/retuner.ini" <<INI
 [Configuration]
 INIVersion=1.2.2
 MessageInfoLevel=4
@@ -108,7 +108,7 @@ User Side=http://127.0.0.1:1/user.mp3
 INI
 
 start_server() {
-  ( cd "$WORK" && ./ytuner > "$1" 2>&1 ) &
+  ( cd "$WORK" && ./retuner > "$1" 2>&1 ) &
   PID=$!
   i=0
   while [ "$i" -lt 50 ]; do
@@ -155,7 +155,7 @@ echo "Testing presets with $BIN"
 echo "- a reachable repository"
 start_repo
 start_server "$WORK/run1.log"
-CATS=$(body "/ytuner/mystations?mac=aabbccddee")
+CATS=$(body "/retuner/mystations?mac=aabbccddee")
 has "the preset category is served"          "$CATS" "National"
 has "the user own category survives"         "$CATS" "Mine Only"
 has "a category present in both appears"     "$CATS" "Shared Category"
@@ -164,9 +164,9 @@ if [ "$(printf '%s' "$CATS" | grep -c 'Shared Category')" = "1" ]; then
 else
   say_fail "the shared category is not duplicated"
 fi
-NAT=$(body "/ytuner/mystations/National?mac=aabbccddee")
+NAT=$(body "/retuner/mystations/National?mac=aabbccddee")
 has "a preset station is listed"             "$NAT" "Test National One"
-SHARED=$(body "/ytuner/mystations/Shared%20Category?mac=aabbccddee")
+SHARED=$(body "/retuner/mystations/Shared%20Category?mac=aabbccddee")
 has "the merged category keeps the user one" "$SHARED" "User Side"
 has "the merged category gains the preset"   "$SHARED" "Preset Side"
 if [ -f "$WORK/config/presets/fi.ini" ]; then
@@ -179,7 +179,7 @@ stop_server
 echo "- an unreachable repository"
 stop_repo
 start_server "$WORK/run2.log"
-CATS=$(body "/ytuner/mystations?mac=aabbccddee")
+CATS=$(body "/retuner/mystations?mac=aabbccddee")
 has "the cached list is still served"        "$CATS" "National"
 has "the failure names the URL"              "$(cat "$WORK/run2.log")" "127.0.0.1:$REPO_PORT/fi.ini"
 stop_server
@@ -188,7 +188,7 @@ echo "- a repository serving something that is not a station list"
 printf '<!doctype html><html><body>404 Not Found</body></html>' > "$WORK/repo/fi.ini"
 start_repo
 start_server "$WORK/run3.log"
-CATS=$(body "/ytuner/mystations?mac=aabbccddee")
+CATS=$(body "/retuner/mystations?mac=aabbccddee")
 has  "the good cached list is kept"          "$CATS" "National"
 has  "the rejection is logged"               "$(cat "$WORK/run3.log")" "not a station list"
 hasnt "the markup is not served"             "$CATS" "doctype"
@@ -197,7 +197,7 @@ stop_repo
 
 echo "- a country code that is not one"
 cp "$WORK/repo/fi.ini.good" "$WORK/repo/fi.ini"
-sed -i 's|^PresetsCountries=fi$|PresetsCountries=../../etc,fi|' "$WORK/ytuner.ini"
+sed -i 's|^PresetsCountries=fi$|PresetsCountries=../../etc,fi|' "$WORK/retuner.ini"
 start_server "$WORK/run4.log"
 has "the bad code is refused by name"        "$(cat "$WORK/run4.log")" "two-letter code"
 if [ -e "$WORK/config/presets/../../etc.ini" ] || [ -e "$WORK/etc.ini" ]; then

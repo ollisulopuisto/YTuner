@@ -1,11 +1,11 @@
 unit relayserver;
 
-// YTuner: HTTP relay for stations these AVRs cannot fetch themselves.
+// Retuner: HTTP relay for stations these AVRs cannot fetch themselves.
 //
 // A growing share of stations are HTTPS-only and vTuner-era firmware has no
 // TLS, so the existing "all-as-http" setting -- which only rewrites the scheme
 // and hopes the station still answers on port 80 -- increasingly fails. With
-// the relay enabled YTuner fetches such a stream itself and re-serves it over
+// the relay enabled Retuner fetches such a stream itself and re-serves it over
 // plain HTTP.
 //
 // This needs its own listener rather than a route on the web server: fcl-web
@@ -151,7 +151,7 @@ begin
   if LContentType.IsEmpty then
     LContentType:=RELAY_DEFAULT_CONTENT_TYPE;
   LHead:='HTTP/1.0 200 OK'+#13#10
-        +'Server: '+YTUNER_USER_AGENT+'/'+APP_VERSION+#13#10
+        +'Server: '+RETUNER_USER_AGENT+'/'+APP_VERSION+#13#10
         +'Content-Type: '+LContentType+#13#10;
 // Station name, genre and bitrate cost nothing to relay and some devices show
 // them, so pass on whatever the station supplied.
@@ -267,7 +267,7 @@ var
   LHead: string;
 begin
   LHead:='HTTP/1.0 '+AStatus+#13#10
-        +'Server: '+YTUNER_USER_AGENT+'/'+APP_VERSION+#13#10
+        +'Server: '+RETUNER_USER_AGENT+'/'+APP_VERSION+#13#10
         +AExtraHeaders
         +'Connection: close'+#13#10#13#10;
   ASocket.WriteBuffer(LHead[1],Length(LHead));
@@ -313,7 +313,7 @@ begin
 // No IOTimeout: a live stream is meant to stay open indefinitely, and the read
 // only ends when the station stops or the AVR disconnects.
         LClient.IOTimeout:=0;
-        LClient.AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+        LClient.AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
         if LWantIcy then
           LClient.AddHeader('Icy-MetaData','1');
         try
@@ -479,7 +479,7 @@ initialization
 {$IFDEF UNIX}
 // Writing to a socket the listener has already closed raises SIGPIPE, and its
 // default action is to kill the process -- so every time an AVR changed station
-// mid-stream it would take YTuner with it. Ignored process-wide, the write
+// mid-stream it would take Retuner with it. Ignored process-wide, the write
 // reports an ordinary error instead, which the relay already handles by
 // unwinding the fetch. The web server never hit this because its responses are
 // short enough to complete before a client can walk away mid-write.

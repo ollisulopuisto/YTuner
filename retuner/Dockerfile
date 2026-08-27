@@ -33,7 +33,7 @@ RUN apt-get update \
       ca-certificates libsqlite3-0 libssl3 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/bin/*/ytuner /opt/retuner/ytuner
+COPY --from=builder /src/bin/*/retuner /opt/retuner/retuner
 COPY --from=builder /src/cfg/ /opt/retuner/cfg/
 COPY rootfs /
 
