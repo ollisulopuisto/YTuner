@@ -5,14 +5,19 @@ receiver, it can serve the radio itself: no virtual machine, no second address,
 and no argument about port 80, because macOS listens on nothing there by
 default.
 
-> **This path is not exercised by CI.** The Linux build, the four test suites and
-> the Home Assistant add-on image are all built and run on every change; nothing
-> here has been run on a Mac. The build script has been given the search paths
-> and the linker flag a Mac needs, and that is a considered guess, not a green
-> test. If something below is wrong, it is wrong in a way that will be obvious —
-> please say so, and it gets fixed.
+> **CI builds and smoke-tests this.** Both Apple Silicon and Intel runners build
+> the binary and run `script/smoke-test.sh` against it on every change, so the
+> vTuner endpoints are known to work here and not merely known to compile. The
+> first run of that job is what found the crash in `TryToFindSQLite3Lib` that
+> made every macOS start fail; it is fixed. What CI cannot check is the parts
+> below that are about your machine rather than the program — launchd, the
+> firewall, sleep, and `ActAsHost`. Those are still reading rather than testing.
 
 ## Build it
+
+You do not have to. Every change publishes a built `aarch64-darwin` (and
+`x86_64-darwin`) tarball — see the Actions tab, or a release — and extracting one
+skips this whole section. Build from source when you want to change something.
 
 You need FPC 3.2.2, the LazUtils sources, `git` and `zip`.
 
