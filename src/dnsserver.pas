@@ -20,7 +20,18 @@ type
 const
   DNS_SERVICE = 'DNS Service';
   DNSSERVER_PORT = 53;
-  INTERCEPT_DNS = '*.vtuner.com';
+// Every name here belongs to a station directory that is dead or has dropped
+// its users, and each is a vTuner-family endpoint this server can answer for.
+// wifiradiofrontier.com is Frontier Silicon's: those radios used vTuner as their
+// directory until Frontier dropped it in May 2019, and they speak the same
+// protocol on a deeper path -- see the Frontier checks in script/smoke-test.sh.
+// Deliberately NOT here: frontier-nuvola.net, which is the live successor.
+// Intercepting a service that still works would break it.
+// This must stay in step with InterceptDNs in cfg/ytuner.ini: the Home
+// Assistant add-on does not write that key, so this constant is what its users
+// actually get.
+  INTERCEPT_DNS = '*.vtuner.com,*.radiosetup.com,*.my-noxon.net,'+
+                  '*.radiomarantz.com,*.wifiradiofrontier.com';
   DNS_SERVERS = '8.8.8.8,9.9.9.9';
 // How long a client stays allowed to have queries forwarded after it was last
 // seen on the web service.
@@ -143,6 +154,33 @@ begin
   end;
 end;
 
+// Does a query match one of the InterceptDNs patterns?
+//
+// Two things this gets right that the inline test it replaces did not:
+//
+// '*.example.com' covers example.com itself, not only names under it. Without
+// that, a device asking for the bare name slips through to the real resolver
+// and interception silently does nothing -- which is exactly the state
+// '*.radiomarantz.com' was in. It is also what dnsmasq's address=/example.com/
+// does, and what every router UI a user is likely to reach for means by it.
+//
+// And the exact-match case is case-insensitive, as DNS is. Resolvers that use
+// 0x20 encoding randomise the case of the name they forward, so a
+// case-sensitive comparison here fails intermittently and for no visible
+// reason. The wildcard branch already ignored case; this makes the two agree.
+function InterceptMatches(const AQuery, APattern: string): boolean;
+var
+  LSuffix: string;
+begin
+  if APattern.StartsWith('*') then
+    begin
+      LSuffix:=APattern.Remove(0,1);
+      Result:=AQuery.EndsWith(LSuffix,True) or SameText(AQuery,LSuffix.TrimLeft(['.']));
+    end
+  else
+    Result:=SameText(AQuery,APattern);
+end;
+
 procedure TIdDNSServerProxy.IdDNS_UDPServerDoAfterQuery(ABinding: TIdSocketHandle; ADNSHeader: TDNSHeader; var QueryResult: TIdBytes; var ResultCode: string; Query : TIdBytes);
 var
   LInterceptDN: string;
@@ -172,8 +210,7 @@ begin
   LDNQuery:=ReplaceSpecSymbol(BytesToString(Query,12));
   for LInterceptDN in InterceptDNs.Split([',']) do
     begin
-      if ((LInterceptDN.IndexOf('*')=0) and LDNQuery.EndsWith(LInterceptDN.Remove(0,1),True))
-        or ((LInterceptDN.IndexOf('*')=-1) and (LDNQuery=LInterceptDN)) then
+      if InterceptMatches(LDNQuery,LInterceptDN.Trim) then
         begin
           if (ToHex(Query,4,2)='01000001')                           // Standard query & Questions: 1
             and (ToHex(Query,4,Length(Query)-4)='00010001') then     // Type "A" & Class "IN"

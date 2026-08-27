@@ -85,6 +85,22 @@ check "main menu"             "/setupapp/x/loginxml.asp?mac=aabbccddee" "<ListOf
 check "about page"            "/ytuner/about?mac=aabbccddee"            "Welcome to Retuner"
 check "empty folder message"  "/ytuner/empty?mac=aabbccddee"            "<ItemType>Display</ItemType>"
 
+# Frontier Silicon radios (Hama, Medion, Technisat, Roberts, Pure, Sangean,
+# Karcher and the rest) speak the same vTuner protocol as the AVRs, but ask for
+# it two path segments deeper: /setupapp/<vendor>/asp/BrowseXML/loginXML.asp
+# rather than /setupapp/<vendor>/loginxml.asp. The route wildcard happens to
+# span both, which is the only reason those radios work at all -- so it is
+# asserted here rather than left to chance. A router change that narrowed the
+# wildcard to a single segment would otherwise break every Frontier device
+# without breaking a single test.
+echo "Frontier Silicon path shape"
+check "deep path token handshake" \
+  "/setupapp/karcher/asp/BrowseXML/loginXML.asp?token=0"        "EncryptedToken"
+check "deep path main menu" \
+  "/setupapp/karcher/asp/BrowseXML/loginXML.asp?mac=aabbccddee" "<ListOfItems>"
+check "deep path station lookup" \
+  "/setupapp/karcher/asp/BrowseXML/statxml.asp?mac=aabbccddee&id=x" "<ListOfItems>"
+
 if [ "$fail" -ne 0 ]; then
   echo "--- server log ---" >&2
   cat "$WORK/server.log" >&2
