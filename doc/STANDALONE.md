@@ -17,7 +17,9 @@ Assistant box behind an nginx proxy is the usual one. Three ways out:
    other one fails. Check with `docker ps` or, on a system with no tools,
    `awk '$4=="0A"{print $2}' /proc/net/tcp | grep -i ':0050$'` — `00000000:0050`
    is the wildcard.
-3. Give Retuner a machine. That is this document.
+3. Give Retuner a machine. That is this document — or, if the machine you have
+   in mind is a Mac that already stays on, [MACOS.md](MACOS.md), which needs no
+   virtual machine at all.
 
 A machine of its own is not a heavy answer. Measured rather than guessed:
 

@@ -27,6 +27,9 @@ if [ -z "${LAZUTILS_DIR:-}" ]; then
   for d in /usr/lib/lazarus/*/components/lazutils \
            /usr/share/lazarus/*/components/lazutils \
            /usr/lib/lazarus/components/lazutils \
+           /Applications/Lazarus/components/lazutils \
+           /opt/homebrew/share/lazarus/components/lazutils \
+           /usr/local/share/lazarus/components/lazutils \
            "$HOME"/lazarus/components/lazutils; do
     [ -f "$d/lazutf8.pas" ] && { LAZUTILS_DIR=$d; break; }
   done
@@ -97,6 +100,11 @@ elif [ -n "${CHECKED:-}" ]; then
   # manager underneath it; the define lists heaptrc after cmem so it wraps it
   # and actually sees the program's allocations.
   OPTS="-O1 -Cr -Co -CR -gl -gh -dNO_CMEM"
+# -Xs strips at link time by passing -s to the linker, which Apple's has
+# dropped. Left off on Darwin so the release build links rather than failing
+# over a flag; strip(1) afterwards if the 4.6 MB matters to you.
+elif [ "$OUT_OS" = darwin ]; then
+  OPTS="-O2"
 else
   OPTS="-O2 -Xs"
 fi

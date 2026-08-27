@@ -1,0 +1,131 @@
+# Retuner on macOS
+
+If you already have a Mac that stays on and sits on the same network as the
+receiver, it can serve the radio itself: no virtual machine, no second address,
+and no argument about port 80, because macOS listens on nothing there by
+default.
+
+> **This path is not exercised by CI.** The Linux build, the four test suites and
+> the Home Assistant add-on image are all built and run on every change; nothing
+> here has been run on a Mac. The build script has been given the search paths
+> and the linker flag a Mac needs, and that is a considered guess, not a green
+> test. If something below is wrong, it is wrong in a way that will be obvious —
+> please say so, and it gets fixed.
+
+## Build it
+
+You need FPC 3.2.2, the LazUtils sources, `git` and `zip`.
+
+* **FPC** — the installer from [freepascal.org](https://www.freepascal.org/download.html)
+  covers Intel and Apple Silicon. `fpc -iTP` and `fpc -iTO` should answer
+  `aarch64` and `darwin` on Apple Silicon. Homebrew's `fpc` works too if it
+  gives you a native compiler.
+* **LazUtils** — install Lazarus (it lands in `/Applications/Lazarus`) or
+  `brew install lazarus`. `script/build.sh` looks in both, plus the Homebrew
+  prefixes. If yours is elsewhere: `LAZUTILS_DIR=/path/to/lazutils ./script/build.sh`.
+* **git and zip** come with the Xcode command line tools: `xcode-select --install`.
+
+```sh
+git clone https://github.com/ollisulopuisto/retuner ~/retuner
+cd ~/retuner && ./script/build.sh          # -> bin/aarch64-darwin/retuner
+```
+
+The release build leaves out `-Xs`, which strips by passing `-s` to the linker —
+Apple's no longer takes it. Run `strip` yourself if the few megabytes matter.
+
+## Install it
+
+```sh
+sudo mkdir -p /usr/local/retuner/config /usr/local/retuner/cache
+sudo cp bin/aarch64-darwin/retuner cfg/retuner.ini /usr/local/retuner/
+sudo cp cfg/avr.ini /usr/local/retuner/config/
+```
+
+Then edit `/usr/local/retuner/retuner.ini`.
+
+## The setting that will bite you here: ActAsHost
+
+Retuner tells the receiver where to fetch stations and artwork, and `default`
+means "an address of this machine" — chosen by walking the interface list. A Mac
+running VMware Fusion or Docker has several: `vmnet1`, `vmnet8`, bridge
+interfaces, each with an address that is real, private, and useless to a
+receiver. Picking one of those fails in the worst way, because the log looks
+perfectly healthy and the receiver simply gets nothing.
+
+Set it explicitly to the Mac's LAN address:
+
+```ini
+[Configuration]
+ActAsHost=192.168.10.50      ; the address the receiver must reach
+IPAddress=default
+LocalCountry=Finland
+[WebServer]
+WebServerPort=80
+[DNSServer]
+Enable=0                     ; the router is doing the redirect
+```
+
+And check what it actually tells the receiver, rather than trusting the setting —
+this works on any platform and is the fastest way to catch a wrong `ActAsHost`:
+
+```sh
+curl -s "http://<the mac>/setupapp/x/loginxml.asp?mac=aabbccddee" \
+  | grep -o 'http://[^<]*' | head
+```
+
+Every URL in there is one the receiver will follow. If they name an address the
+receiver cannot reach, nothing else you do will help.
+
+## Run it
+
+`doc/retuner.plist` is a launchd daemon for the layout above.
+
+```sh
+sudo cp doc/retuner.plist /Library/LaunchDaemons/io.github.ollisulopuisto.retuner.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.ollisulopuisto.retuner.plist
+tail -f /usr/local/retuner/retuner.log
+```
+
+`launchctl print system/io.github.ollisulopuisto.retuner` shows its state, and
+`sudo launchctl kickstart -k system/io.github.ollisulopuisto.retuner` restarts it.
+
+**It runs as root**, because a daemon in `/Library/LaunchDaemons` does and
+because port 80 is not negotiable — the receiver's firmware asks for it and
+Retuner advertises URLs without a port. That is more privilege than this program
+wants, and macOS offers nothing like the confinement the systemd unit in
+`doc/STANDALONE.md` gets. If that bothers you — and it reasonably might, given
+that station logos are files chosen by strangers and decoded in this process —
+add a `UserName` key to the plist, set `WebServerPort=8080`, and redirect 80 to
+8080 with a `pf` anchor. That is more moving parts and a rule that has to survive
+a reboot, so it is a deliberate choice rather than the default here.
+
+## Two macOS things that will look like Retuner bugs
+
+**The firewall.** If macOS's firewall is on, the first incoming connection
+prompts, and a daemon has nobody to answer the prompt. Allow the binary in
+System Settings → Network → Firewall → Options.
+
+**Sleep.** A sleeping Mac serves nothing, and the receiver's menu will simply be
+empty until it wakes. `sudo pmset -a sleep 0` (and on a laptop, `disablesleep 1`)
+if the machine is meant to be a server.
+
+## Updating
+
+```sh
+cd ~/retuner && git pull && ./script/build.sh
+sudo cp bin/aarch64-darwin/retuner /usr/local/retuner/retuner
+sudo launchctl kickstart -k system/io.github.ollisulopuisto.retuner
+```
+
+## Checking it works, in an order that localises a failure
+
+```sh
+curl -I http://<the mac>/setupapp/x/loginxml.asp?token=0     # Retuner on port 80
+curl -s "http://<the mac>/setupapp/x/loginxml.asp?mac=aabbccddee" \
+  | grep -o 'http://[^<]*' | head                            # what it advertises
+dig radioyamaha.vtuner.com @<your resolver>                  # the DNS override
+dig radioyamaha.vtuner.com                                   # what the receiver gets
+```
+
+Then the receiver's Internet Radio button. `New AVR connected (<mac>)` in the log
+is the moment it is talking to you.
