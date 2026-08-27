@@ -11,6 +11,8 @@ Upstream's last change to `src/` was in **April 2025**; every commit since has b
 - Shared state was reached from several request threads with no locking, which is the likely cause of the `double free or corruption` aborts reported after days of uptime.
 - Icon responses contained the source image and the converted one concatenated, defeating `IconSize` and tripping stricter decoders.
 - The maintenance shutdown endpoint authorised callers by the `Host` header, which the caller supplies.
+- The icon endpoint used the `id` query parameter as a file name under the cache directory, so `GET /ytuner/icon?id=../<path>` returned that file with an image content type, unauthenticated, with icon caching on as it is by default.
+- A station logo was decoded with no ceiling on what its header could ask for: an 8000x8000 PNG of a few hundred bytes took the process to half a gigabyte, and a 3000x2 one scaled to a 200-pixel icon rounded its height to zero, which ended the process with an access violation. Both are reachable from any station whose logo URL someone else controls.
 - The project only compiled with FPC **trunk**, so it could not be built with the compiler Debian, Ubuntu or Raspberry Pi OS ship — and on FPC 3.2.2 a latent stack buffer overflow in `CalcFileCRC32` crashed it during startup.
 
 No upstream pull requests have been opened yet; the fixes are meant to go back, and this note will say so once they have. The fork exists so they are available now, not so the project is divided.
