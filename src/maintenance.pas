@@ -162,7 +162,7 @@ begin
   if RadioBrowserEnabled and (RBCacheType in [catDB, catMemDB, catPermMemDB]) and (Assigned(DBRBMainConnection))then
     begin
       Logging(ltInfo,string.Join(': ',[MSG_RBDB_CLOSING,MSG_RBDB_DB,MSG_RBDB_CONNECTION]));
-      if DBRBMainConnection.Connected then;
+      if DBRBMainConnection.Connected then
         DBRBMainConnection.Connected:=False;
       FreeAndNil(DBRBMainConnection);
     end;

@@ -86,12 +86,19 @@ begin
               for i:=AFirstElement to ALastElement do
                 begin
                   AppendChild(LXMLBookmarkPart.ImportNode(LXMLBookmark.FirstChild.ChildNodes[i+1],true));
-                  LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
-                  LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+// A station saved without an icon serialises as <Logo></Logo>, which has no
+// text child to read. Unguarded, one such bookmark raised here and took the
+// whole favourites list down with it -- a 404 on every request until the file
+// was hand-edited. GetBookmarkStationInfo already guards the same way.
+                  if LastChild.FindNode(VT_XML_LOGO).HasChildNodes then
+                    LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+                  if LastChild.FindNode(VT_XML_BOOKMARK).HasChildNodes then
+                    LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
                   if LAVRConfigIdx>=0 then
                     with AVRConfigArray[LAVRConfigIdx].Translator do
                       if ReplaceUTF8Latin1Supplement or ReplaceUTF8Latin1ExtendedA or ReplaceUTF8Latin1ExtendedB then
-                        LastChild.FindNode(VT_XML_STATIONNAME).FirstChild.NodeValue:=ReplaceDiacritics(LastChild.FindNode(VT_XML_STATIONNAME).FirstChild.NodeValue,LAVRConfigIdx);
+                        if LastChild.FindNode(VT_XML_STATIONNAME).HasChildNodes then
+                          LastChild.FindNode(VT_XML_STATIONNAME).FirstChild.NodeValue:=ReplaceDiacritics(LastChild.FindNode(VT_XML_STATIONNAME).FirstChild.NodeValue,LAVRConfigIdx);
                 end;
             end;
           WriteXML(LXMLBookmarkPart,AXMLStream);
@@ -198,21 +205,23 @@ begin
       if LNode.NodeName=VT_XML_LISTOFITEMS then
         if (LNode.FirstChild.NodeName=VT_XML_ITEMCOUNT) then
           if TryStrToInt(LNode.FirstChild.FirstChild.NodeValue,LItemCount) then
-            if LItemCount<BookmarkStationsLimit then
-              begin
-                i:=1;
-                while (i<=LNode.ChildNodes.Count-1) and (LStationIdx<0) do
-                  begin
-                    if (LNode.ChildNodes[i].NodeName=VT_XML_ITEM) and (LNode.ChildNodes[i].FindNode(VT_XML_STATIONID).FirstChild.NodeValue=ANode.FindNode(VT_XML_STATIONID).FirstChild.NodeValue) then
-                      LStationIdx:=i;
-                    i:=i+1;
-                  end;
-                LXMLOK:=True;
-              end;
+            begin
+              i:=1;
+              while (i<=LNode.ChildNodes.Count-1) and (LStationIdx<0) do
+                begin
+                  if (LNode.ChildNodes[i].NodeName=VT_XML_ITEM) and (LNode.ChildNodes[i].FindNode(VT_XML_STATIONID).FirstChild.NodeValue=ANode.FindNode(VT_XML_STATIONID).FirstChild.NodeValue) then
+                    LStationIdx:=i;
+                  i:=i+1;
+                end;
+              LXMLOK:=True;
+            end;
       if LXMLOK then
         case AAction of
+// The limit belongs to adding only. Gating the whole block on it meant that a
+// full bookmark file could not be deleted from either, so there was no way
+// back under the limit using the remote control.
           PATH_FAVACTION_ADD:
-            if LStationIdx<0 then
+            if (LStationIdx<0) and (LItemCount<BookmarkStationsLimit) then
               begin
                 LNode.FirstChild.FirstChild.NodeValue:=IntToStr(LItemCount+1);
                 LNode:=LXMLBookmark.ImportNode(ANode,true);

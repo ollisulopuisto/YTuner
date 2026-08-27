@@ -7,7 +7,7 @@ unit common;
 interface
 
 uses
-  Classes, SysUtils, IdStack, IdGlobal, StrUtils, crc,
+  Classes, SysUtils, syncobjs, IdStack, IdGlobal, StrUtils, crc,
 {$IFDEF UNIX}
   dl,
 {$ENDIF}
@@ -265,6 +265,11 @@ var
   {$ENDIF}
 {$ENDIF}
 
+var
+// Serialises log output. Created before any other unit's initialization can
+// log, since every unit depends on this one.
+  LogLock: TCriticalSection;
+
 procedure Logging(ALogType: TLogType; ALogMessage: string);
 function GetLocalIP(ADefaultIP: string): string;
 function CalcFileCRC32(AFileName: string): Cardinal;
@@ -303,8 +308,17 @@ procedure Logging(ALogType: TLogType; ALogMessage: string);
 begin
   if ALogType<=LogType then
     begin
-      ALogMessage[1]:=UpCase(ALogMessage[1]);
-      Writeln(DateTimeToStr(Now)+' : '+LOG_TYPE_MSG[ALogType]+' : '+ALogMessage+'.');
+// An empty message used to index position 1 of an empty string.
+      if not ALogMessage.IsEmpty then
+        ALogMessage[1]:=UpCase(ALogMessage[1]);
+// Every request runs on its own thread and Writeln is not atomic, so without
+// this lock lines from concurrent handlers interleave mid-word.
+      LogLock.Acquire;
+      try
+        Writeln(DateTimeToStr(Now)+' : '+LOG_TYPE_MSG[ALogType]+' : '+ALogMessage+'.');
+      finally
+        LogLock.Release;
+      end;
     end;
 end;
 
@@ -692,6 +706,12 @@ begin
 {$ENDIF}
     Result:=ProgramDirectory;
 end;
+
+initialization
+  LogLock:=TCriticalSection.Create;
+
+finalization
+  LogLock.Free;
 
 end.
 

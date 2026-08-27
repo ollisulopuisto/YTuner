@@ -296,6 +296,14 @@ begin
              FreeAndNil(LStream);
            end;
          end;
+// An id that is missing or shorter than three characters matched no branch and
+// the handler returned without ever writing a response, leaving the AVR to sit
+// on the request until it timed out.
+  else
+    begin
+      Logging(ltError, MSG_NO_STATIONS_FOUND+' with ID: '+AReq.QueryFields.Values[PATH_PARAM_ID]+'');
+      DisplayMessage(MSG_NO_STATIONS_FOUND,ARes);
+    end;
   end;
 end;
 

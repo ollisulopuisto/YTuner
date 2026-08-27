@@ -102,6 +102,7 @@ procedure ReadINIConfiguration;
 var
   LToken: string;
   LRBCacheTypeIdx: integer;
+  LLogLevel: integer;
   LCacheFolderLocation, LConfigFolderLocation, LDBFolderLocation: string;
 begin
   with TIniFile.Create(MyAppPath+'ytuner.ini') do
@@ -109,7 +110,16 @@ begin
       try
         if not ValueExists(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL) then
           WriteInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4);
-        LogType:=TLogType(ReadInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4));
+// Clamped rather than cast blindly: a value outside 0..4 produced an invalid
+// enum, which silently changed which messages were logged.
+        LLogLevel:=ReadInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4);
+        if (LLogLevel<Ord(Low(TLogType))) or (LLogLevel>Ord(High(TLogType))) then
+          begin
+            LogType:=ltDebug;
+            Logging(ltWarning, INI_MESSAGE_INFO_LEVEL+' must be 0..'+Ord(High(TLogType)).ToString+'. Using '+Ord(ltDebug).ToString+'.');
+          end
+        else
+          LogType:=TLogType(LLogLevel);
       except
         LogType:=ltError;
       end;
