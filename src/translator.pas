@@ -107,6 +107,8 @@ begin
     try
       AllowRedirect:=True;
       KeepConnection:=True;
+      ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+      IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
       AddHeader(HTTP_HEADER_ACCEPT,'application/json');
       AddHeader(HTTP_HEADER_ACCEPT_LANGUAGE, 'en-US,'+ALanguageCode.ToLower);
       AddHeader(HTTP_HEADER_CACHE_CONTROL, WEBBROWSER_HTTP_HEADER_CACHE_CONTROL);

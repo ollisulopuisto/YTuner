@@ -202,7 +202,7 @@ var
           AVR_MAINMENU_IDENTIFIER_MYSTATIONS:
             if MyStationsEnabled then
               begin
-                LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_MY_STATIONS,Length(MyStations),-1));
+                LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_MY_STATIONS,Length(GetMyStationsSnapshot),-1));
                 LIdx:=LIdx+1;
               end;
           AVR_MAINMENU_IDENTIFIER_RADIOBROWSER:
@@ -322,16 +322,18 @@ var
   i: integer;
   LFirstElement: integer = 0;
   LLastElement: integer = 0;
+  LStations: TMyStationsGroup;
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
-  GetPageRange(LFirstElement,LLastElement,Length(MyStations),AReq.QueryFields);
+  LStations:=GetMyStationsSnapshot;
+  GetPageRange(LFirstElement,LLastElement,Length(LStations),AReq.QueryFields);
   LMyPage:=TVTunerPage.Create;
-  LMyPage.TotalItemsCount:=Length(MyStations);
+  LMyPage.TotalItemsCount:=Length(LStations);
   try
-    if Length(MyStations)>0 then
+    if Length(LStations)>0 then
       begin
         for i:=LFirstElement to LLastElement do
-          with MyStations[i] do
+          with LStations[i] do
             LMyPage.Add(SetVTunerDirectory(MSCategory,PATH_ROOT+'/'+PATH_MY_STATIONS+'/'+URLEncode(MSCategory),Length(MSStations),-1));
         SendPageResponse(HTTP_CODE_OK,ctXML,ARes,LMyPage);
       end
@@ -353,22 +355,33 @@ var
   LCategoryIdx: integer = 0;
   LFirstElement: integer = 0;
   LLastElement: integer = 0;
+  LStations: TMyStationsGroup;
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
+  LStations:=GetMyStationsSnapshot;
   LMSStation.Category:=HTTPDecode(AReq.RouteParams[PATH_CATEGORY]);
-  while (LCategoryIdx<Length(MyStations)-1) and (MyStations[LCategoryIdx].MSCategory.ToLower<>LMSStation.Category.ToLower) do
-    Inc(LCategoryIdx);
-  if MyStations[LCategoryIdx].MSCategory.ToLower=LMSStation.Category.ToLower then
+// An empty station list used to reach MyStations[0] below and raise a range
+// error; an unknown category fell through without answering at all, leaving
+// the AVR to time out.
+  if Length(LStations)=0 then
     begin
-      GetPageRange(LFirstElement,LLastElement,Length(MyStations[LCategoryIdx].MSStations),AReq.QueryFields);
+      Logging(ltError, MSG_NO_STATIONS_FOUND);
+      DisplayMessage(MSG_NO_STATIONS_FOUND,ARes);
+      Exit;
+    end;
+  while (LCategoryIdx<Length(LStations)-1) and (LStations[LCategoryIdx].MSCategory.ToLower<>LMSStation.Category.ToLower) do
+    Inc(LCategoryIdx);
+  if LStations[LCategoryIdx].MSCategory.ToLower=LMSStation.Category.ToLower then
+    begin
+      GetPageRange(LFirstElement,LLastElement,Length(LStations[LCategoryIdx].MSStations),AReq.QueryFields);
       LMyPage:=TVTunerPage.Create;
-      LMyPage.TotalItemsCount:=Length(MyStations[LCategoryIdx].MSStations);
+      LMyPage.TotalItemsCount:=Length(LStations[LCategoryIdx].MSStations);
       try
-        if Length(MyStations[LCategoryIdx].MSStations)>0 then
+        if Length(LStations[LCategoryIdx].MSStations)>0 then
           begin
             for i:=LFirstElement to LLastElement do
               begin
-                LMSStation.Station:=MyStations[LCategoryIdx].MSStations[i];
+                LMSStation.Station:=LStations[LCategoryIdx].MSStations[i];
                 LMyPage.Add(SetVTunerStation(LMSStation,AReq));
               end;
             SendPageResponse(HTTP_CODE_OK,ctXML,ARes,LMyPage);
@@ -381,6 +394,11 @@ begin
       finally
         LMyPage.Free;
       end;
+    end
+  else
+    begin
+      Logging(ltError, MSG_NO_STATIONS_FOUND+' : '+LMSStation.Category);
+      DisplayMessage(MSG_NO_STATIONS_FOUND+' : '+LMSStation.Category,ARes);
     end;
 end;
 
@@ -440,6 +458,8 @@ begin
             with TFPHttpClient.Create(nil) do
               try
                 AllowRedirect:=True;
+                ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+                IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
                 LHeaderAcceptStr:=HTTP_RESPONSE_CONTENT_TYPE[ctJPG];
                 {$IFDEF READERPNG}
                 LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctPNG];
@@ -489,6 +509,10 @@ begin
                       begin
                         try
                           LoadFromStream(LStream,LImageReader);
+// The image is decoded now, so drop the downloaded bytes before re-encoding.
+// Writing at the stream's end would otherwise leave source and converted image
+// concatenated, which is what reaches the AVR and the icon cache.
+                          LStream.Size:=0;
                           if (Width>IconSize) or (Height>IconSize) then
                             begin
                               if Width>=Height then
@@ -513,22 +537,28 @@ begin
                           Logging(ltError, 'Unsupported stream with image type: "'+LURL+'"? /'+E.Message+'/');
                         end;
                       end;
-                    {$IFDEF WRITERJPG}
-                    ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
-                    {$ELSE}
-                    {$IFDEF WRITERPNG}
-                    ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
-                    {$ENDIF}
-                    {$ENDIF}
-                    if IconCache then
+// A failed conversion leaves the stream empty; serving or caching that would
+// hand the AVR a 0-byte icon and poison the cache with it.
+                    if LStream.Size>0 then
                       begin
-                        if not DirectoryExists(CachePath) then CreateDir(CachePath);
-                        try
-                          LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
-                        except
-                          on E : Exception do
-                            Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
-                        end;
+                        LStream.Position:=0;
+                        {$IFDEF WRITERJPG}
+                        ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
+                        {$ELSE}
+                        {$IFDEF WRITERPNG}
+                        ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
+                        {$ENDIF}
+                        {$ENDIF}
+                        if IconCache then
+                          begin
+                            if not DirectoryExists(CachePath) then CreateDir(CachePath);
+                            try
+                              LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
+                            except
+                              on E : Exception do
+                                Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
+                            end;
+                          end;
                       end;
                   finally
                     FreeAndNil(LImageWriter);
@@ -699,7 +729,9 @@ procedure GetSearchedStations(AReq: TRequest; ARes: TResponse);
 var
   LRBStations: TRBStations;
   LDeviceID: string;
+  LStations: TMyStationsGroup;
 begin
+  LStations:=GetMyStationsSnapshot;
   try
     if AReq.QueryFields.Values[PATH_PARAM_SSEARCH_TYPE]='3' then    // In some cases "3" mean a "Play" option.
       begin
@@ -718,8 +750,8 @@ begin
                 AReq.QueryFields.AddPair(PATH_PARAM_ID,'UNB'+AReq.QueryFields.Values[PATH_PARAM_SEARCH]);
               end
             else
-              if MyStationsEnabled and (Length(MyStations)>0) and (Length(MyStations[0].MSStations)>0) then
-                AReq.QueryFields.AddPair(PATH_PARAM_ID,MyStations[0].MSStations[0].MSID)
+              if MyStationsEnabled and (Length(LStations)>0) and (Length(LStations[0].MSStations)>0) then
+                AReq.QueryFields.AddPair(PATH_PARAM_ID,LStations[0].MSStations[0].MSID)
               else
                 Logging(ltDebug, MSG_FIRST_STATION_NEEDED);
           end
@@ -772,8 +804,10 @@ end;
 procedure VTunerRedirect(AReq: TRequest; ARes: TResponse);
 var
   LHTTP_Code: integer = HTTP_CODE_NOT_FOUND;
+  LStations: TMyStationsGroup;
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
+  LStations:=GetMyStationsSnapshot;
   with TLocalHttpClient.Create(1024) do
     try
       AllowRedirect:=False;
@@ -800,10 +834,10 @@ begin
           begin
             Logging(ltDebug, MSG_VTUNER_ERROR_LINK2);
             Logging(ltDebug, MSG_FIRST_STATION_NEEDED);
-            if MyStationsEnabled and (Length(MyStations)>0) and (Length(MyStations[0].MSStations)>0) then
+            if MyStationsEnabled and (Length(LStations)>0) and (Length(LStations[0].MSStations)>0) then
               begin
                 LHTTP_Code:=HTTPCodeRedirect;
-                ARes.SetCustomHeader(HTTP_HEADER_LOCATION,StripHttps(MyStations[0].MSStations[0].MSURL,AReq));
+                ARes.SetCustomHeader(HTTP_HEADER_LOCATION,StripHttps(LStations[0].MSStations[0].MSURL,AReq));
               end
             else
               Logging(ltDebug, MSG_FIRST_STATION_NEEDED);

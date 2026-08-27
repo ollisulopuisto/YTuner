@@ -7,7 +7,7 @@ unit radiobrowser;
 interface
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, syncobjs,
   fpjson, jsonparser,
   fphttpclient, httpprotocol, httpdefs,
   RegExpr, StrUtils, DateUtils, FileUtil,
@@ -51,6 +51,11 @@ const
   API_REVERSE_PATH = 'reverse';
   API_OFFSET_PATH = 'offset';
   API_LIMIT_PATH = 'limit';
+
+// radiobrowser-api-rust applies its own api-default-limit (1000 by default) to
+// any query that does not name a limit, so a bulk fetch against a self-hosted
+// mirror silently returned only the first 1000 rows. Ask explicitly.
+  API_BULK_LIMIT = 1000000;
 
   API_POPULAR_FILTER_PATH = '?order=votes&reverse=true&limit=';
   API_SEARCH_FILTER_PATH = '?order=name&reverse=false&limit=';
@@ -107,7 +112,13 @@ var
   RBCacheType: TCacheType = catFile;
   RBStationsUUIDs: string = '';
   RBCache: TRBCache;
+// The web server is threaded, so RBCache is reached from several request
+// threads at once. Every entry point below is serialised on this lock: one
+// handler used to be able to delete an entry while another was iterating.
+  RBCacheLock: TCriticalSection;
 
+function AddAPIParam(AURL, AParam: string): string;
+function AddBulkLimit(AURL: string): string;
 function GetAPIURLRange(AElementNumber,AElementCount: integer): string;
 function RadiobrowserAPIRequest(AURL: string): RawByteString;
 function RadiobrowserAPIRequestJSON(AURL: string): TJSONData;
@@ -166,6 +177,19 @@ begin
   OwnsObjects:=True;
 end;
 
+function AddAPIParam(AURL, AParam: string): string;
+begin
+  Result:=AURL+IfThen(AURL.Contains('?'),'&','?')+AParam;
+end;
+
+function AddBulkLimit(AURL: string): string;
+begin
+  if AURL.Contains(API_LIMIT_PATH+'=') then
+    Result:=AURL
+  else
+    Result:=AddAPIParam(AURL,API_LIMIT_PATH+'='+IntToStr(API_BULK_LIMIT));
+end;
+
 function GetAPIURLRange(AElementNumber,AElementCount: integer): string;
 begin
   Result:='?'+API_OFFSET_PATH+'='+IntToStr(AElementNumber)+'&'+API_LIMIT_PATH+'='+IntToStr(AElementCount);
@@ -177,9 +201,12 @@ begin
   with TFPHttpClient.Create(nil) do
   try
     try
+      ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+      IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
       AddHeader(HTTP_HEADER_ACCEPT,HTTP_RESPONSE_CONTENT_TYPE[ctJSON]);
       AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
-      Result:=RemoveEscChars(Get(RBAPIURL+'/json/'+AURL));
+// Kept raw: stripping ';' here would corrupt Shoutcast stream URLs such as
+// http://host:8000/;. Per-field sanitising happens in SetRBStation instead.
       Result:=Get(RBAPIURL+'/json/'+AURL);
     except
       Logging(ltError,MSG_RADIOBROWSER+': '+MSG_ERROR+' '+MSG_GETTING+' '+AURL);
@@ -307,7 +334,7 @@ begin
   LStations:=TStringList.Create;
   try
     try
-      SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',RadiobrowserAPIRequest(API_STATIONS_PATH),LStations);
+      SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',RadiobrowserAPIRequest(AddBulkLimit(API_STATIONS_PATH)),LStations);
     except
       On E: Exception do
         begin
@@ -403,7 +430,7 @@ begin
       end;
 
       try
-        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(LURL+IfThen(HIDE_BROKEN_STATIONS,'&'+API_HIDEBROKEN_FILTER_PATH,'')));
+        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(LURL+IfThen(HIDE_BROKEN_STATIONS,'&'+API_HIDEBROKEN_FILTER_PATH,''))));
         try
           if LJSONArray.Count>0 then
             begin
@@ -500,7 +527,7 @@ begin
         if (RBCacheType=catNone) or (Result=0) then
           begin
             try
-              LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,'')));
+              LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,''))));
               try
                 if LJSONArray.Count>0 then
                   begin
@@ -571,7 +598,7 @@ begin
   if (RBCacheType=catNone) or (Result=0) then
     begin
       try
-        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,'')));
+        LJSONArray:=TJSONArray(RadiobrowserAPIRequestJSON(AddBulkLimit(RB_CATEGORIES_PATH[ARBCategoryType]+IfThen(HIDE_BROKEN_STATIONS,'?'+API_HIDEBROKEN_FILTER_PATH,''))));
         try
           if LJSONArray.Count>0 then
             begin
@@ -684,7 +711,7 @@ begin
     end;
 end;
 
-function GetRBCache(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+function GetRBCacheUnlocked(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -728,7 +755,17 @@ begin
     end;
 end;
 
-function SetRBCache(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
+function GetRBCache(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=GetRBCacheUnlocked(ARBObjectsList,ACacheName,AAVRConfigIdx,AStart,AHowMany);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function SetRBCacheUnlocked(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -791,7 +828,17 @@ begin
     Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%},MSG_EMPTY,MSG_OBJECTS,ACacheName]));
 end;
 
-function GetRBStationCache(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
+function SetRBCache(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=SetRBCacheUnlocked(ARBObjectsList,ACacheName,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function GetRBStationCacheUnlocked(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheName, LCacheFileName: string;
@@ -853,7 +900,17 @@ begin
     end;
 end;
 
-function RemoveEmptyCategory(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
+function GetRBStationCache(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=GetRBStationCacheUnlocked(ARBStation,AUUID,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function RemoveEmptyCategoryUnlocked(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -914,6 +971,16 @@ begin
                     end;
                   end;
     end;
+end;
+
+function RemoveEmptyCategory(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=RemoveEmptyCategoryUnlocked(ARBAllCategoryType,ACacheName,AName,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
 end;
 
 function LoadRBObjects(ARBObjectsList: TRBObjectsList; AFileName: string; AStart, AHowMany: integer; AObjectName: string = ''): integer;
@@ -1194,7 +1261,7 @@ begin
   end;
 end;
 
-procedure LoadRBCacheFilesInfo(AAVRConfigIdx: integer);
+procedure LoadRBCacheFilesInfoUnlocked(AAVRConfigIdx: integer);
 var
   LCacheFile: string;
   LCacheFiles: TStringList;
@@ -1214,6 +1281,16 @@ begin
     LCacheFiles.free;
   end;
 
+end;
+
+procedure LoadRBCacheFilesInfo(AAVRConfigIdx: integer);
+begin
+  RBCacheLock.Enter;
+  try
+    LoadRBCacheFilesInfoUnlocked(AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
 end;
 
 procedure RemoveOldRBCacheFiles;
@@ -1240,9 +1317,13 @@ begin
   end;
 end;
 
+initialization
+  RBCacheLock:=TCriticalSection.Create;
+
 finalization
   if (RBCacheType<>catNone) and Assigned(RBCache) then
     RBCache.Free;
+  RBCacheLock.Free;
 
 end.
 

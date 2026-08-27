@@ -124,6 +124,12 @@ const
   INI_MAINTENANCESERVER_IPADDRESS = 'MaintenanceServerIPAddress';
   INI_MAINTENANCESERVER_PORT = 'MaintenanceServerPort';
 
+// Outbound HTTP is bounded so a stalled remote host cannot pin a request thread
+// forever. An AVR's vTuner browser waits on one request at a time, so an
+// unbounded fetch freezes the whole device UI.
+  HTTP_CLIENT_CONNECT_TIMEOUT = 5000;    // ms
+  HTTP_CLIENT_IO_TIMEOUT = 15000;        // ms, per socket read
+
   HTTP_HEADER_ACCEPT = 'Accept';
   HTTP_HEADER_USER_AGENT = 'User-Agent';
   HTTP_HEADER_LOCATION = 'Location';
@@ -253,6 +259,8 @@ uses radiobrowserdb;
 constructor TLocalHttpClient.Create(AMaxDataToReceive: integer = 0);
 begin
   inherited Create(nil);
+  ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
+  IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
   FMaxDataToReceive:=AMaxDataToReceive;
   if FMaxDataToReceive>0 then
     OnDataReceived := @HandleDataReceived;
@@ -367,8 +375,9 @@ function RemoveEscChars(LInputStr: RawByteString): RawByteString;
 var
   i: integer;
 begin
+  Result:=LInputStr;
   for i:=Low(ESC_CHARS) to High(ESC_CHARS) do
-    Result:=AnsiReplaceStr(LInputStr,ESC_CHARS[i],'');
+    Result:=AnsiReplaceStr(Result,ESC_CHARS[i],'');
 end;
 
 function HaveCommonElements(AStr: string; AStrArray: array of string): boolean;

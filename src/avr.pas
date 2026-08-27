@@ -7,7 +7,7 @@ unit avr;
 interface
 
 uses
-  Classes, SysUtils, IniFiles, StrUtils, HTTPDefs, common, httproute;
+  Classes, SysUtils, IniFiles, StrUtils, syncobjs, HTTPDefs, common, httproute;
 
 type
   TRBFilter = record
@@ -94,6 +94,10 @@ const
 var
   AVRMACsArray: array of string;
   AVRConfigArray: TAVRConfigArray;
+// Registering a newly seen AVR grows both arrays from a request thread. Two
+// devices appearing at once used to be able to interleave their SetLength calls
+// and corrupt each other's entry.
+  AVRConfigLock: TCriticalSection;
   CommonAVRini: boolean = True;
 
 function StripHttps(AURL: string; AReq: TRequest):string;
@@ -137,19 +141,29 @@ begin
           Result:=IndexStr(LAVRMAC,AVRMACsArray);
           if Result<0 then
             begin
-              Logging(ltInfo, 'New AVR connected ('+LAVRMAC+')');
-              if not FileExists(ConfigPath+DirectorySeparator+LAVRMAC+'.ini') then
-                Logging(ltInfo, 'Preparing new config ini file ('+LAVRMAC+'.ini)..');
+              AVRConfigLock.Enter;
               try
-                Result:=ReadAVRINIConfiguration(LAVRMAC);
-                if Result>0 then
-                  case RBCacheType of
-                    catFile: LoadRBCacheFilesInfo(Result);
-                    catDB, catMemDB, catPermMemDB: DBRBCheckAVRView(Result);
+// Another request thread may have registered this AVR while we waited.
+                Result:=IndexStr(LAVRMAC,AVRMACsArray);
+                if Result<0 then
+                  begin
+                    Logging(ltInfo, 'New AVR connected ('+LAVRMAC+')');
+                    if not FileExists(ConfigPath+DirectorySeparator+LAVRMAC+'.ini') then
+                      Logging(ltInfo, 'Preparing new config ini file ('+LAVRMAC+'.ini)..');
+                    try
+                      Result:=ReadAVRINIConfiguration(LAVRMAC);
+                      if Result>0 then
+                        case RBCacheType of
+                          catFile: LoadRBCacheFilesInfo(Result);
+                          catDB, catMemDB, catPermMemDB: DBRBCheckAVRView(Result);
+                        end;
+                    finally
+                      if Result<0 then                         //INI error.
+                        Result:=0;                             //Default AVR config.
+                    end;
                   end;
               finally
-                if Result<0 then                               //INI error.
-                  Result:=0;                                   //Default AVR config.
+                AVRConfigLock.Leave;
               end;
             end;
         end;
@@ -164,13 +178,29 @@ var
   LIdx: integer;
 
   procedure RBFilteringReadStrings(var AFilterItem: TStringArray; const AIDENT: string);
+  var
+    LEntries: TStringArray;
+    LIdx, LCount: integer;
   begin
     with LAVRINIFile do
       begin
         if not ValueExists(AVR_INI_SECTION_RADIOBROWSER_FILTERING,AIDENT) then
           WriteString(AVR_INI_SECTION_RADIOBROWSER_FILTERING,AIDENT,'');
-        AFilterItem:=StripChars(ReadString(AVR_INI_SECTION_RADIOBROWSER_FILTERING,AIDENT,''),RB_FILTER_STRIP_CHARS).Split([';'],TStringSplitOptions.ExcludeEmpty);
+        LEntries:=StripChars(ReadString(AVR_INI_SECTION_RADIOBROWSER_FILTERING,AIDENT,''),RB_FILTER_STRIP_CHARS).Split([';'],TStringSplitOptions.ExcludeEmpty);
       end;
+// Only the whole value was trimmed, so "Denmark; Germany" yielded " Germany",
+// which matched nothing -- neither against the cached JSON nor in the SQL view
+// built from these entries. Spaces around separators are the natural way to
+// write the list, so trim each entry and drop any that is left blank.
+    SetLength(AFilterItem,Length(LEntries));
+    LCount:=0;
+    for LIdx:=0 to High(LEntries) do
+      if not LEntries[LIdx].Trim.IsEmpty then
+        begin
+          AFilterItem[LCount]:=LEntries[LIdx].Trim;
+          LCount:=LCount+1;
+        end;
+    SetLength(AFilterItem,LCount);
   end;
 
 begin
@@ -274,6 +304,12 @@ begin
         LoadTranslator(Result,AAVRMAC);
     end;
 end;
+
+initialization
+  AVRConfigLock:=TCriticalSection.Create;
+
+finalization
+  AVRConfigLock.Free;
 
 end.
 
