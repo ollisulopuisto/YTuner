@@ -35,6 +35,9 @@ jobs:
       - name: Preset behaviour
         run: ./script/test-presets.sh
 
+      - name: Radio Browser behaviour
+        run: ./script/test-radiobrowser.sh
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -90,11 +93,13 @@ jobs:
             || { echo "the service is not registered under user/contents.d"; exit 1; }
           shellcheck --shell=bash --exclude=SC1091,SC2148 \
             retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run
-          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh; do
+          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh script/test-radiobrowser.sh; do
             sh -n "$f"
             shellcheck --shell=sh "$f"
           done
-          python3 -c 'import ast; ast.parse(open("script/make-preset.py").read())'
+          for f in script/make-preset.py script/testdata/mock-radiobrowser.py; do
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
+          done
 
       # Builds the add-on image the way a Home Assistant machine would, so a
       # broken Dockerfile is caught here rather than on someone's Pi.
