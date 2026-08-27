@@ -2,7 +2,7 @@ name: Retuner
 version: "0.1.0"
 slug: retuner
 description: Brings internet radio back to AV receivers whose vTuner service was shut down
-url: "https://github.com/ollisulopuisto/YTuner/tree/master/retuner"
+url: "https://github.com/ollisulopuisto/retuner/tree/master/retuner"
 arch:
   - aarch64
   - amd64

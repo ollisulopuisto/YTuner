@@ -9,7 +9,7 @@ This add-on runs Retuner on your Home Assistant machine.
 ## Installation
 
 1. Settings → Add-ons → Add-on store → ⋮ → **Repositories**, and add
-   `https://github.com/ollisulopuisto/YTuner`.
+   `https://github.com/ollisulopuisto/retuner`.
 2. Install **Retuner** from the list. The first install compiles the source, so
    give it a few minutes — longer on a Raspberry Pi.
 3. Start it, then point the receiver at it (below).
