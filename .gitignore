@@ -2,17 +2,19 @@
 # (script/zip-sql.bat on Windows, script/zip-sql.sh elsewhere)
 res/*.zip
 
-# Build output
-.build/
-bin/
-lib/
+# Build output. Anchored to the repository root: unanchored, "bin/" also matched
+# retuner/rootfs/usr/bin, which silently kept a file the add-on image needs out
+# of the commit.
+/.build/
+/bin/
+/lib/
 *.o
 *.or
 *.ppu
 *.a
 *.compiled
 *.res
-backup/
+/backup/
 
 # Lazarus per-user session state
 *.lps
