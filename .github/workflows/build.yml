@@ -38,3 +38,73 @@ jobs:
           name: ytuner-linux-x86_64
           path: bin/x86_64-linux/ytuner
           if-no-files-found: error
+
+  addon:
+    name: Home Assistant add-on
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the add-on metadata parses and says what it must
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          repo = yaml.safe_load(open('repository.yaml'))
+          for key in ('name', 'url', 'maintainer'):
+              assert repo.get(key), f'repository.yaml is missing {key}'
+
+          cfg = yaml.safe_load(open('retuner/config.yaml'))
+          for key in ('name', 'version', 'slug', 'description', 'arch'):
+              assert cfg.get(key), f'config.yaml is missing {key}'
+
+          # Every option needs a schema entry and vice versa, or the supervisor
+          # silently drops it and the service script reads an empty string.
+          opts, schema = set(cfg['options']), set(cfg['schema'])
+          assert opts == schema, f'options/schema mismatch: {opts ^ schema}'
+
+          build = yaml.safe_load(open('retuner/build.yaml'))
+          missing = set(cfg['arch']) - set(build['build_from'])
+          assert not missing, f'build.yaml has no base image for {missing}'
+          print('add-on metadata ok')
+          PY
+
+      - name: Check the service script
+        run: |
+          bash -n retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run
+          test -x retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run \
+            || { echo "the s6 run script is not executable"; exit 1; }
+          test -f retuner/rootfs/etc/s6-overlay/s6-rc.d/user/contents.d/retuner \
+            || { echo "the service is not registered under user/contents.d"; exit 1; }
+          shellcheck --shell=bash --exclude=SC1091,SC2148 \
+            retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run
+
+      # Builds the add-on image the way a Home Assistant machine would, so a
+      # broken Dockerfile is caught here rather than on someone's Pi.
+      - name: Build the add-on image
+        run: |
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm \
+            --build-arg RETUNER_REPO="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            --build-arg RETUNER_REF="${{ github.head_ref || github.ref_name }}" \
+            -t retuner-addon:test \
+            retuner
+
+      # Not started here: the binary is a server and would never exit. Checking
+      # that it is present, executable and has every shared library it needs is
+      # what this stage can prove; the smoke test above covers it running.
+      - name: Check the built image carries a runnable binary
+        run: |
+          docker run --rm --entrypoint /bin/sh retuner-addon:test -c '
+            set -e
+            test -x /opt/retuner/ytuner
+            test -f /opt/retuner/cfg/stations.ini
+            test -x /etc/s6-overlay/s6-rc.d/retuner/run
+            test -f /usr/bin/merge-ini.awk
+            command -v awk >/dev/null
+            ldd /opt/retuner/ytuner
+            if ldd /opt/retuner/ytuner | grep -q "not found"; then
+              echo "a shared library is missing from the image"
+              exit 1
+            fi
+            echo "add-on image ok"
+          '

@@ -362,10 +362,38 @@ begin
   inherited Destroy;
 end;
 
+// TFPHTTPServer only grew an Address property in FPC 3.3, so on the compiler
+// this project is built with the listening socket is open on every interface
+// whatever WebGUIIPAddress says. A service that writes configuration files must
+// not be quietly wider than its setting claims, so the address is enforced here
+// on the connection instead: the port answers, but only to the clients the
+// setting names. "default" and "0.0.0.0" mean any client, which is what a
+// container or a remote host needs.
+function ClientAllowed(const ARemote: string): boolean;
+begin
+  Result:=WebGUIIPAddress.IsEmpty
+       or (WebGUIIPAddress=DEFAULT_STRING)
+       or (WebGUIIPAddress='0.0.0.0')
+       or (WebGUIIPAddress=ARemote);
+end;
+
 procedure TWebGUIServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
 var
   LError, LPath: string;
 begin
+  if not ClientAllowed(ARequest.RemoteAddress) then
+    begin
+      Logging(ltWarning, string.Join(' ',[WEBGUI_SERVICE+':','refused',ARequest.URI,'from',ARequest.RemoteAddress,'(WebGUIIPAddress='+WebGUIIPAddress+')']));
+      with AResponse do
+        begin
+          Code:=HTTP_CODE_UNAVAILABLE;
+          Content:='Service unavailable.';
+          ContentLength:=Length(Content);
+          SendContent;
+        end;
+      Exit;
+    end;
+
   if not Authorised(ARequest) then
     begin
       Logging(ltWarning, string.Join(' ',[WEBGUI_SERVICE+':','unauthorised',ARequest.URI,'from',ARequest.RemoteAddress]));

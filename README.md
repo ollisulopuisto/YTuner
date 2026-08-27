@@ -290,6 +290,9 @@ Simply execute `ytuner.exe`.
 ### Docker container
 If you are not familiar with building Docker containers you can read [this](doc/DOCKER.md).
 
+### Home Assistant add-on
+`retuner/` packages this as a Home Assistant add-on. Add `https://github.com/ollisulopuisto/YTuner` under Settings → Add-ons → Add-on store → ⋮ → Repositories, then install **Retuner**. The settings are exposed as add-on options and your station files live in the add-on's configuration folder. See [retuner/DOCS.md](retuner/DOCS.md) for the options, how to point the receiver at it, and the port-conflict traps on a Home Assistant machine.
+
 ### Remote hosting (VPS)
 YTuner does not have to run on the same LAN as your AVR — a VPS such as an Oracle Free Tier instance works, and the setup on the listener's side is one DNS field on the amplifier: no router configuration, nothing extra at home. `DNSAdvertiseIP` makes the built-in DNS service answer with the public address instead of the private one it sees behind NAT, and `RestrictForwarding` keeps it from being an open resolver. See [doc/REMOTE-HOSTING.md](doc/REMOTE-HOSTING.md) for the full setup, the Oracle-specific firewall trap, and which options put audio through the VPS.
 

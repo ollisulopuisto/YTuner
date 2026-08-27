@@ -1,0 +1,60 @@
+name: Retuner
+version: "0.1.0"
+slug: retuner
+description: Brings internet radio back to AV receivers whose vTuner service was shut down
+url: "https://github.com/ollisulopuisto/YTuner/tree/master/retuner"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+# The receiver connects to this machine directly, and the DNS service has to see
+# the address a query really came from, so the add-on shares the host's network
+# rather than sitting behind a port mapping.
+host_network: true
+map:
+  - addon_config:rw
+options:
+  act_as_host: ""
+  web_port: 80
+  local_country: ""
+  resolve_playlists: true
+  relay_https: false
+  relay_port: 8888
+  dns_service: false
+  dns_port: 53
+  dns_advertise_ip: ""
+  dns_restrict_forwarding: false
+  upstream_dns: "8.8.8.8;1.1.1.1"
+  radiobrowser: true
+  cache_type: catMemStr
+  my_stations: true
+  bookmarks: true
+  stations_editor: false
+  stations_editor_port: 8080
+  stations_editor_user: admin
+  stations_editor_password: ""
+  log_level: normal
+  advanced_ini: ""
+schema:
+  act_as_host: "str?"
+  web_port: "port"
+  local_country: "str?"
+  resolve_playlists: "bool"
+  relay_https: "bool"
+  relay_port: "port"
+  dns_service: "bool"
+  dns_port: "port"
+  dns_advertise_ip: "str?"
+  dns_restrict_forwarding: "bool"
+  upstream_dns: "str"
+  radiobrowser: "bool"
+  cache_type: "list(catNone|catFile|catMemStr|catDB|catMemDB|catPermMemDB)"
+  my_stations: "bool"
+  bookmarks: "bool"
+  stations_editor: "bool"
+  stations_editor_port: "port"
+  stations_editor_user: "str"
+  stations_editor_password: "password?"
+  log_level: "list(quiet|normal|debug)"
+  advanced_ini: "str?"

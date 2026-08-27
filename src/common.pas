@@ -316,6 +316,11 @@ begin
       LogLock.Acquire;
       try
         Writeln(DateTimeToStr(Now)+' : '+LOG_TYPE_MSG[ALogType]+' : '+ALogMessage+'.');
+// Output is block-buffered whenever it is not a terminal, which is every way
+// this is actually deployed -- systemd, Docker, a Home Assistant add-on. Without
+// this the log arrives in 4 KB instalments, so the startup lines saying which
+// ports were bound can sit unseen for hours, and a crash loses them entirely.
+        Flush(Output);
       finally
         LogLock.Release;
       end;

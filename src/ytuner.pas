@@ -512,13 +512,19 @@ begin
     end;
 
   if WebGUIEnabled and StartWebGUIServer then
-    Logging(ltInfo, WEBGUI_SERVICE+': listening on: '+WebGUIIPAddress+':'+WebGUIPort.ToString);
+// Says who may reach it rather than what it bound to: on FPC 3.2.2 the socket
+// is open on every interface regardless, and the setting is enforced per
+// connection instead.
+    Logging(ltInfo, WEBGUI_SERVICE+': listening on port '+WebGUIPort.ToString
+      +', accepting '+IfThen(WebGUIIPAddress.IsEmpty or (WebGUIIPAddress=DEFAULT_STRING) or (WebGUIIPAddress='0.0.0.0'),
+                             'any client',WebGUIIPAddress));
 
   if RelayHTTPS then
     begin
       OnRelayResolveURL:=@ResolveRelayStationURL;
-      if StartRelayServer then
-        Logging(ltInfo, RELAY_SERVICE+': listening on: '+WebServerIPAddress+':'+RelayPort.ToString);
+      RelayIPAddress:=WebServerIPAddress;
+// The listener logs its own address once the bind has actually succeeded.
+      StartRelayServer;
     end;
 
   if DNSServerEnabled and StartDNSServer then

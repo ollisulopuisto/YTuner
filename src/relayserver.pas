@@ -19,9 +19,9 @@ unit relayserver;
 interface
 
 uses
-  Classes, SysUtils, ssockets,
+  Classes, SysUtils, StrUtils, ssockets,
 {$IFDEF UNIX}
-  BaseUnix,
+  BaseUnix, Sockets,
 {$ENDIF}
   fphttpclient, common;
 
@@ -74,6 +74,9 @@ type
 var
   RelayHTTPS: boolean = False;
   RelayPort: integer = RELAY_PORT;
+// Set to the web server's address so the relay is reachable exactly where the
+// menus are, and nowhere else. Empty binds every interface.
+  RelayIPAddress: string = '';
   OnRelayResolveURL: TRelayResolveURL = nil;
 
 function StartRelayServer: boolean;
@@ -380,12 +383,33 @@ begin
 end;
 
 procedure TRelayListener.Execute;
+{$IFDEF UNIX}
+var
+  LReuse: longint;
+{$ENDIF}
 begin
   try
-    FServer:=TInetServer.Create(RelayPort);
+    if RelayIPAddress.IsEmpty then
+      FServer:=TInetServer.Create(RelayPort)
+    else
+      FServer:=TInetServer.Create(RelayIPAddress,RelayPort);
     FServer.OnConnect:=@HandleConnect;
+{$IFDEF UNIX}
+// A relayed connection is closed by us, not the listener, so the port is left
+// in TIME_WAIT and a restart within a minute or so cannot rebind it -- the
+// relay would come up dead while the rest of the service ran normally. Setting
+// the option on the socket directly rather than through TInetServer.ReuseAddress
+// because that property does not reach the socket in FPC 3.2.2 (verified: with
+// a TIME_WAIT entry on the port, the property leaves bind failing and this call
+// makes it succeed).
+    LReuse:=1;
+    fpsetsockopt(FServer.Socket,SOL_SOCKET,SO_REUSEADDR,@LReuse,SizeOf(LReuse));
+{$ENDIF}
     FServer.Bind;
     FServer.Listen;
+// Logged here rather than by the caller: StartRelayServer only reports that the
+// thread began, and the bind can still fail after that.
+    Logging(ltInfo, RELAY_SERVICE+': listening on: '+IfThen(RelayIPAddress.IsEmpty,'*',RelayIPAddress)+':'+RelayPort.ToString);
     FServer.StartAccepting;
   except
     on E: Exception do
