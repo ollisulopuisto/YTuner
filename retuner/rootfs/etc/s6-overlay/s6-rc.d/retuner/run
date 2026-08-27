@@ -1,0 +1,144 @@
+#!/usr/bin/with-contenv bashio
+# Turns the add-on's options into ytuner.ini and starts the service.
+#
+# ytuner.ini is generated on every start, so it is not somewhere to keep hand
+# edits -- the add-on options are. Everything a person actually curates
+# (stations, per-AVR settings, bookmarks) lives in /config, which is the add-on
+# configuration folder and is never rewritten here.
+set -e
+
+APP_DIR=/opt/retuner
+# Retuner reads its ini from the directory the binary is in, which lives in the
+# container's own filesystem and is discarded whenever the add-on is updated.
+# The real file is kept in /data and linked into place.
+INI=/data/ytuner.ini
+
+mkdir -p /config /data/cache /data/db
+ln -sf "${INI}" "${APP_DIR}/ytuner.ini"
+
+# Seed the stations file on first run so there is a working example to edit.
+# avr.ini is deliberately not seeded: Retuner writes its own with no filtering,
+# while the example shipped in cfg/ carries a demonstration tag filter that
+# would hide almost every station.
+if [ ! -f /config/stations.ini ] && [ -f "${APP_DIR}/cfg/stations.ini" ]; then
+    cp "${APP_DIR}/cfg/stations.ini" /config/stations.ini
+    bashio::log.info "Seeded /config/stations.ini with the shipped example."
+fi
+if bashio::config.true 'podcasts' && [ ! -f /config/podcasts.ini ] \
+   && [ -f "${APP_DIR}/cfg/podcasts.ini" ]; then
+    cp "${APP_DIR}/cfg/podcasts.ini" /config/podcasts.ini
+    bashio::log.info "Seeded /config/podcasts.ini with the shipped example."
+fi
+
+case "$(bashio::config 'log_level')" in
+    quiet) LOG_LEVEL=1 ;;
+    debug) LOG_LEVEL=4 ;;
+    *)     LOG_LEVEL=3 ;;
+esac
+
+bool() { if bashio::config.true "$1"; then echo 1; else echo 0; fi; }
+
+# Left empty, ActAsHost resolves to the machine's own interface address, which
+# is what a receiver on the same network needs. It only has to be set when the
+# address the receiver should connect to is not the one this container sees.
+ACT_AS_HOST=$(bashio::config 'act_as_host')
+if [ -z "${ACT_AS_HOST}" ]; then
+    ACT_AS_HOST=default
+fi
+
+# Retuner stamps the ini it completes with the version it expects, and warns
+# about a file that carries none. Carrying the stamp across a regeneration keeps
+# that warning to the first start rather than every start, and still lets a
+# genuinely outdated file be reported once after an upgrade.
+INI_VERSION=""
+if [ -f "${INI}" ]; then
+    INI_VERSION=$(sed -n 's/^INIVersion=\(.*\)$/\1/p' "${INI}" | head -1)
+fi
+
+{
+    echo "; Generated from the add-on options on every start -- edit the add-on"
+    echo "; configuration, not this file. Station and AVR files live in /config."
+    echo
+    echo "[Configuration]"
+    if [ -n "${INI_VERSION}" ]; then
+        echo "INIVersion=${INI_VERSION}"
+    fi
+    echo "ActAsHost=${ACT_AS_HOST}"
+    echo "MessageInfoLevel=${LOG_LEVEL}"
+    echo "ResolvePlaylists=$(bool 'resolve_playlists')"
+    echo "LocalCountry=$(bashio::config 'local_country')"
+    echo "RelayHTTPS=$(bool 'relay_https')"
+    echo "RelayPort=$(bashio::config 'relay_port')"
+    echo "ConfigFolderLocation=/"
+    echo "CacheFolderLocation=/data"
+    echo "DBFolderLocation=/data"
+    echo
+    echo "[WebServer]"
+    echo "WebServerIPAddress=default"
+    echo "WebServerPort=$(bashio::config 'web_port')"
+    echo
+    echo "[DNSServer]"
+    echo "Enable=$(bool 'dns_service')"
+    echo "DNSServerIPAddress=default"
+    echo "DNSServerPort=$(bashio::config 'dns_port')"
+    echo "DNSAdvertiseIP=$(bashio::config 'dns_advertise_ip')"
+    echo "RestrictForwarding=$(bool 'dns_restrict_forwarding')"
+    echo "DNSServers=$(bashio::config 'upstream_dns')"
+    echo
+    echo "[MyStations]"
+    echo "Enable=$(bool 'my_stations')"
+    echo "MyStationsFile=stations.ini"
+    echo
+    echo "[Podcasts]"
+    echo "Enable=$(bool 'podcasts')"
+    echo "PodcastsFile=podcasts.ini"
+    echo "PodcastEpisodesLimit=$(bashio::config 'podcast_episodes_limit')"
+    echo
+    echo "[RadioBrowser]"
+    echo "Enable=$(bool 'radiobrowser')"
+    echo "RBCacheType=$(bashio::config 'cache_type')"
+    echo
+    echo "[Bookmark]"
+    echo "Enable=$(bool 'bookmarks')"
+    echo
+    echo "[WebGUI]"
+    echo "Enable=$(bool 'stations_editor')"
+    echo "WebGUIIPAddress=default"
+    echo "WebGUIPort=$(bashio::config 'stations_editor_port')"
+    echo "WebGUIUser=$(bashio::config 'stations_editor_user')"
+    echo "WebGUIPassword=$(bashio::config 'stations_editor_password')"
+} > "${INI}"
+
+# Merged rather than appended: most of what anyone would put here belongs to
+# [Configuration], which the generated file always writes, and a second
+# [Configuration] further down the file is simply never read.
+ADVANCED=$(bashio::config 'advanced_ini')
+if [ -n "${ADVANCED}" ]; then
+    printf '%s\n' "${ADVANCED}" > "${INI}.extra"
+    if awk -f /usr/bin/merge-ini.awk "${INI}.extra" "${INI}" > "${INI}.merged"; then
+        mv "${INI}.merged" "${INI}"
+    else
+        bashio::log.warning "Could not merge advanced_ini; leaving the generated configuration as it is."
+        rm -f "${INI}.merged"
+    fi
+    rm -f "${INI}.extra"
+fi
+
+if bashio::config.true 'stations_editor' && [ -z "$(bashio::config 'stations_editor_password')" ]; then
+    bashio::log.warning "The stations editor is on but has no password, so it will refuse to start."
+fi
+
+if bashio::config.true 'stations_editor'; then
+    bashio::log.info "The stations editor listens on this machine's own address, not just loopback, so it can be reached from a browser elsewhere on the network. It is protected by the password above and by nothing else."
+fi
+
+if bashio::config.true 'podcasts' && ! bashio::config.true 'relay_https'; then
+    bashio::log.info "Podcasts are on but the HTTPS relay is off. Podcast episodes are very often HTTPS-only, which these receivers cannot fetch at all -- if episodes list but will not play, turn relay_https on."
+fi
+
+if bashio::config.true 'dns_service'; then
+    bashio::log.info "DNS service on port $(bashio::config 'dns_port'). If another add-on already answers DNS on this host (AdGuard Home, Pi-hole), one of the two will fail to bind."
+fi
+
+bashio::log.info "Starting Retuner on port $(bashio::config 'web_port')."
+exec "${APP_DIR}/ytuner"

@@ -4,6 +4,8 @@
 
 # YTuner
 
+> **This is Retuner, a maintained fork of [YTuner](https://github.com/coffeegreg/YTuner).** It carries bug fixes upstream has not taken, builds with the Free Pascal compiler your distribution ships, and is tested in CI. See [doc/RETUNER.md](doc/RETUNER.md) for what changed, why the fork is named the way it is, and what is planned — including Spotify playback on receivers that have no Spotify Connect of their own.
+
 YTuner is a simple project inspired by [YCast](https://github.com/milaq/YCast) but rewritten from scratch and greatly improved.
 Designed to replace vTuner internet radio service and dedicated to all users of AVRs made by Yamaha, Denon, Onkyo, Marantz, Pioneer, Harman Kardon, Pro-Ject and others with built-in vTuner support.
 If you own one (or even more) of the vTuner-enabled AVRs mentioned above and want to enjoy free internet radio stations on your device as before, and be sure that your device's streaming service won't suddenly end, you should consider using YTuner.
@@ -287,6 +289,18 @@ Simply execute `ytuner.exe`.
 
 ### Docker container
 If you are not familiar with building Docker containers you can read [this](doc/DOCKER.md).
+
+### Podcasts
+Set `Enable=1` in the `[Podcasts]` section of `ytuner.ini` and list feeds in `podcasts.ini` (same shape as `stations.ini`: `Name=feed URL`, with an optional `|artwork URL`). Each feed becomes a folder and each episode a station, so the AVR browses and plays them the way it does radio — nothing in the firmware has to understand podcasts. Episode enclosures are very often HTTPS-only, which these AVRs cannot fetch at all, so `RelayHTTPS=1` is usually wanted alongside it.
+
+### Home Assistant add-on
+`retuner/` packages this as a Home Assistant add-on. Add `https://github.com/ollisulopuisto/YTuner` under Settings → Add-ons → Add-on store → ⋮ → Repositories, then install **Retuner**. The settings are exposed as add-on options and your station files live in the add-on's configuration folder. See [retuner/DOCS.md](retuner/DOCS.md) for the options, how to point the receiver at it, and the port-conflict traps on a Home Assistant machine.
+
+### Remote hosting (VPS)
+YTuner does not have to run on the same LAN as your AVR — a VPS such as an Oracle Free Tier instance works, and the setup on the listener's side is one DNS field on the amplifier: no router configuration, nothing extra at home. `DNSAdvertiseIP` makes the built-in DNS service answer with the public address instead of the private one it sees behind NAT, and `RestrictForwarding` keeps it from being an open resolver. See [doc/REMOTE-HOSTING.md](doc/REMOTE-HOSTING.md) for the full setup, the Oracle-specific firewall trap, and which options put audio through the VPS.
+
+### Spotify on a receiver without Spotify Connect
+Plenty of these receivers never got the firmware update that added Spotify Connect, so the Spotify app cannot see them at all. A Connect client such as [go-librespot](https://github.com/devgianlu/go-librespot) can republish playback as an ordinary Icecast stream, which YTuner then presents as a station the AVR can select. [doc/SPOTIFY.md](doc/SPOTIFY.md) has the recipe, what track titles need, and the caveats — Premium is required and the transport buttons on the amplifier will not drive playback.
 
 ## Build
 You can use [Lazarus Free Pascal RAD IDE](https://www.lazarus-ide.org/) to build YTuner. 

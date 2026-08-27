@@ -39,7 +39,7 @@ uses
   fpreadtiff,
 {$ENDIF}
   fphttpclient, httpdefs, httproute, DOM,
-  common, vtuner, my_stations, radiobrowser, bookmark, avr, translator;
+  common, vtuner, my_stations, podcasts, radiobrowser, bookmark, avr, translator, relayserver, dnsserver;
 
 const
   WEB_SERVICE = 'Web Service';
@@ -70,6 +70,9 @@ const
 
   MSG_QUERY_TOO_SHORT = 'Search query too short.';
   MSG_NO_STATIONS_FOUND = 'No station(s) found';
+  MSG_PODCASTS_NONE = 'No podcast feeds configured';
+  MSG_PODCASTS_NO_FEED = 'Podcast feed not found';
+  MSG_PODCASTS_NO_EPISODES = 'No episodes found';
   MSG_FOR_THIS_CATEGORY = ' for this category';
   MSG_UNKNOWN_ROUTE = 'Unknown route';
   MSG_EMPTY_FOLDER = 'This folder is intentionally empty...';
@@ -95,6 +98,8 @@ procedure GetStation(AReq: TRequest; ARes: TResponse);
 procedure BookmarkService(AReq: TRequest; ARes: TResponse);
 procedure GetMyStationsCategories(AReq: TRequest; ARes: TResponse);
 procedure GetMyStationsOfCategory(AReq: TRequest; ARes: TResponse);
+procedure GetPodcastFeedList(AReq: TRequest; ARes: TResponse);
+procedure GetPodcastFeedEpisodes(AReq: TRequest; ARes: TResponse);
 procedure GetIcon(AReq: TRequest; ARes: TResponse);
 procedure GetRadioBrowserRootDirectory(AReq: TRequest; ARes: TResponse);
 procedure GetRadioBrowserCategoryType(AReq: TRequest; ARes: TResponse);
@@ -120,11 +125,15 @@ procedure SendPageResponse(AResponseCode: integer; AResponseContentType: TRespon
 // vTuner structures routines
 function SetVTunerStation(AStation: TMSStation; AReq: TRequest): TVTunerStation;
 function SetVTunerStation(ARBStation: TRBStation; AReq: TRequest; ATranslatorIdx: integer): TVTunerStation;
+function SetVTunerStation(AEpisode: TPodcastEpisode; const AFeedName: string; AReq: TRequest): TVTunerStation;
 function SetVTunerDirectory(ATitle, ADestination: string; AItemCount: integer; ATranslatorIdx: integer): TVTunerDirectory;
 function SetVTunerDisplay(AMessage: string): TVTunerDisplay;
 
 // Display AVR messsages
 procedure DisplayMessage(AMessage: string; var ARes: TResponse);
+
+// Station lookup for the relay listener, which has no access to these units.
+function ResolveRelayStationURL(const AID: string): string;
 
 implementation
 
@@ -136,6 +145,8 @@ begin
   HTTPRouter.RegisterRoute('/'+PATH_SETUPAPP+'/'+PATH_FAVXML_ASP, @BookmarkService, false);
   HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_MY_STATIONS, @GetMyStationsCategories, false);
   HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_MY_STATIONS+'/:'+PATH_CATEGORY, @GetMyStationsOfCategory, false);
+  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_PODCASTS, @GetPodcastFeedList, false);
+  HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_PODCASTS+'/:'+PATH_CATEGORY, @GetPodcastFeedEpisodes, false);
   HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_ICON+IconExtension, @GetIcon, false);
   HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_RADIOBROWSER, @GetRadioBrowserRootDirectory, false);
   HTTPRouter.RegisterRoute('/'+PATH_ROOT+'/'+PATH_RADIOBROWSER+'/:'+PATH_CATEGORY_TYPE, @GetRadioBrowserCategoryType, false);
@@ -217,6 +228,25 @@ var
                 LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_BOOKMARK,GetBookmarkItemsCount(AReq.QueryFields.Values[PATH_PARAM_MAC]),-1));
                 LIdx:=LIdx+1;
               end;
+// Skips the country level of Radio Browser and lands directly on the stations
+// of the configured country. Nothing to show if no country is set.
+          AVR_MAINMENU_IDENTIFIER_LOCAL:
+            if RadiobrowserEnabled and (not LocalCountry.IsEmpty) then
+              begin
+                LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,
+                            PATH_ROOT+'/'+PATH_RADIOBROWSER+'/'+PATH_RADIOBROWSER_COUNTRY+'/'+URLEncode(LocalCountry),
+                            RBPopularAndSearchStationsLimit,-1));
+                LIdx:=LIdx+1;
+              end;
+// Hidden unless podcasts are switched on and at least one feed loaded, so the
+// entry never leads to an empty folder.
+          AVR_MAINMENU_IDENTIFIER_PODCASTS:
+            if PodcastsEnabled and (Length(GetPodcastFeeds)>0) then
+              begin
+                LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,
+                            PATH_ROOT+'/'+PATH_PODCASTS,Length(GetPodcastFeeds),-1));
+                LIdx:=LIdx+1;
+              end;
           AVR_MAINMENU_IDENTIFIER_ABOUT:
             begin
               LMyPage.Add(SetVTunerDirectory(AVRConfigArray[AAAVRConfigIdx].MainMenuItems[LLIdx].MLabel,PATH_ROOT+'/'+PATH_ABOUT,2,-1));
@@ -229,6 +259,11 @@ var
 
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
+// This is the AVR's entry point, so it is where we learn the address a device
+// actually reaches us from. On a public host that address is then allowed to
+// have its station lookups forwarded, which is what makes pointing an AVR's DNS
+// setting at this server enough on its own.
+  DNSNoteWebClient(AReq.RemoteAddress);
   if AReq.QueryFields.Values[PATH_PARAM_TOKEN]='0' then
     ServerResponse(HTTP_CODE_OK,ctXML,ARes,VT_XML_ENCRYPTEDTOKEN.Replace('><','>'+MyToken+'<'))
   else
@@ -278,6 +313,14 @@ begin
              FreeAndNil(LStream);
            end;
          end;
+// An id that is missing or shorter than three characters matched no branch and
+// the handler returned without ever writing a response, leaving the AVR to sit
+// on the request until it timed out.
+  else
+    begin
+      Logging(ltError, MSG_NO_STATIONS_FOUND+' with ID: '+AReq.QueryFields.Values[PATH_PARAM_ID]+'');
+      DisplayMessage(MSG_NO_STATIONS_FOUND,ARes);
+    end;
   end;
 end;
 
@@ -402,6 +445,75 @@ begin
     end;
 end;
 
+// The feed list. Each feed is a directory; its episodes are one level down,
+// addressed by the feed's id rather than its name so a title with a slash or a
+// non-Latin character cannot break the path.
+procedure GetPodcastFeedList(AReq: TRequest; ARes: TResponse);
+var
+  i: integer;
+  LMyPage: TVTunerPage;
+  LFeeds: TPodcastFeeds;
+  LFirstElement: integer = 0;
+  LLastElement: integer = 0;
+begin
+  Logging(ltDebug, AReq.Method+' '+AReq.URI);
+  LFeeds:=GetPodcastFeeds;
+  if Length(LFeeds)=0 then
+    begin
+      Logging(ltWarning, MSG_PODCASTS_NONE);
+      DisplayMessage(MSG_PODCASTS_NONE,ARes);
+      Exit;
+    end;
+  GetPageRange(LFirstElement,LLastElement,Length(LFeeds),AReq.QueryFields);
+  LMyPage:=TVTunerPage.Create;
+  LMyPage.TotalItemsCount:=Length(LFeeds);
+  try
+    for i:=LFirstElement to LLastElement do
+      LMyPage.Add(SetVTunerDirectory(LFeeds[i].PFName,
+                  PATH_ROOT+'/'+PATH_PODCASTS+'/'+LFeeds[i].PFID,PodcastEpisodesLimit,-1));
+    SendPageResponse(HTTP_CODE_OK,ctXML,ARes,LMyPage);
+  finally
+    LMyPage.Free;
+  end;
+end;
+
+// The episodes of one feed. Fetching happens here rather than while the feed
+// list is drawn: listing every feed would otherwise mean downloading every one
+// of them before the first screen could be sent.
+procedure GetPodcastFeedEpisodes(AReq: TRequest; ARes: TResponse);
+var
+  i: integer;
+  LMyPage: TVTunerPage;
+  LFeed: TPodcastFeed;
+  LEpisodes: TPodcastEpisodes;
+  LFirstElement: integer = 0;
+  LLastElement: integer = 0;
+begin
+  Logging(ltDebug, AReq.Method+' '+AReq.URI);
+  if not GetPodcastFeedByID(HTTPDecode(AReq.RouteParams[PATH_CATEGORY]),LFeed) then
+    begin
+      Logging(ltError, string.Join(' ',[MSG_PODCASTS_NO_FEED,AReq.RouteParams[PATH_CATEGORY]]));
+      DisplayMessage(MSG_PODCASTS_NO_FEED,ARes);
+      Exit;
+    end;
+  if not GetPodcastEpisodes(LFeed,LEpisodes) then
+    begin
+      Logging(ltError, string.Join(' ',[MSG_PODCASTS_NO_EPISODES,LFeed.PFName]));
+      DisplayMessage(MSG_PODCASTS_NO_EPISODES,ARes);
+      Exit;
+    end;
+  GetPageRange(LFirstElement,LLastElement,Length(LEpisodes),AReq.QueryFields);
+  LMyPage:=TVTunerPage.Create;
+  LMyPage.TotalItemsCount:=Length(LEpisodes);
+  try
+    for i:=LFirstElement to LLastElement do
+      LMyPage.Add(SetVTunerStation(LEpisodes[i],LFeed.PFName,AReq));
+    SendPageResponse(HTTP_CODE_OK,ctXML,ARes,LMyPage);
+  finally
+    LMyPage.Free;
+  end;
+end;
+
 procedure GetIcon(AReq: TRequest; ARes: TResponse);
 var
   LStream: TMemoryStream;
@@ -443,6 +555,7 @@ begin
       begin
         case LImageFile.Substring(0,2) of
           MY_STATIONS_PREFIX: LURL:=GetMyStationByID(LImageFile).Station.MSLogoURL;
+          PODCASTS_PREFIX: LURL:=GetPodcastLogoForEpisode(LImageFile);
           RADIOBROWSER_PREFIX: begin
                                  LRBStation:=TRBStation.Create;
                                  try
@@ -696,6 +809,7 @@ var
   LURL: string = '';
   LCode: integer;
   LRBStation: TRBStation;
+  LEpisode: TPodcastEpisode;
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
   case AReq.QueryFields.Values[PATH_PARAM_ID].Substring(0,2) of
@@ -703,6 +817,9 @@ begin
       with GetMyStationByID(AReq.QueryFields.Values[PATH_PARAM_ID]) do
         if Station.MSID<>'' then
           LURL:=StripHttps(Station.MSURL,AReq);
+    PODCASTS_PREFIX:
+      if GetPodcastEpisodeByID(AReq.QueryFields.Values[PATH_PARAM_ID],LEpisode) then
+        LURL:=StripHttps(LEpisode.PEURL,AReq);
     RADIOBROWSER_PREFIX:
       begin
         LRBStation:=TRBStation.Create;
@@ -716,6 +833,10 @@ begin
   end;
   if LURL<>'' then
     begin
+// Unwrap here rather than when the listing is built: a category page would
+// otherwise have to fetch a playlist per station before it could answer.
+      if ResolvePlaylists and LooksLikePlaylist(LURL) then
+        LURL:=StripHttps(ResolveStreamURL(LURL),AReq);
       ARes.SetCustomHeader(HTTP_HEADER_LOCATION,LURL);
       LCode:=HTTPCodeRedirect;
     end
@@ -915,6 +1036,7 @@ function GetStationInfo(AReq: TRequest; AMyPage: TVTunerPage): string;
 var
   LMSStation: TMSStation;
   LRBStation: TRBStation;
+  LEpisode: TPodcastEpisode;
   LAVRConfigIdx: integer;
 begin
   Result:='';
@@ -929,6 +1051,13 @@ begin
             Result:=LMSStation.Station.MSID;
           end;
       end;
+    PODCASTS_PREFIX:
+      if GetPodcastEpisodeByID(AReq.QueryFields.Values[PATH_PARAM_ID],LEpisode) then
+        begin
+          AMyPage.TotalItemsCount:=1;
+          AMyPage.Add(SetVTunerStation(LEpisode,LEpisode.PEDescription,AReq));
+          Result:=LEpisode.PEID;
+        end;
     RADIOBROWSER_PREFIX:
       begin
         LRBStation:=TRBStation.Create;
@@ -1024,11 +1153,41 @@ begin
       UID:=Station.MSID;
       Name:=Station.MSName;
       Description:='My favorite "'+Station.MSName+'"';
-      URL:=StripHttps(Station.MSURL,AReq);
+      if NeedsRelay(Station.MSURL) then
+        URL:=RelayURLFor(UID)
+      else
+        begin
+          URL:=StripHttps(Station.MSURL,AReq);
+          if ResolvePlaylists and LooksLikePlaylist(URL) then
+            URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+        end;
 
       Icon:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_ICON+IconExtension+'?'+PATH_PARAM_ID+'='+Station.MSID;
       Genre:=Category;
       Bookmark:=PATH_HTTP+URLHost+'/'+PATH_SETUPAPP+'/'+PATH_FAVXML_ASP+'?'+PATH_PARAM_ID+'='+Station.MSID+'&'+PATH_FAVACTION+'='+PATH_FAVACTION_ADD;
+    end;
+end;
+
+// An episode is a station whose URL is the enclosure. Podcast enclosures are
+// very often HTTPS-only, which is precisely what these receivers cannot fetch,
+// so this is the listing where the relay earns its keep.
+function SetVTunerStation(AEpisode: TPodcastEpisode; const AFeedName: string; AReq: TRequest): TVTunerStation;
+begin
+  Result:=TVTunerStation.Create;
+  with Result, AEpisode do
+    begin
+      UID:=PEID;
+      Name:=PETitle;
+      Description:=AFeedName;
+      if not PEDate.IsEmpty then
+        Description:=AFeedName+' - '+PEDate;
+      if NeedsRelay(PEURL) then
+        URL:=RelayURLFor(UID)
+      else
+        URL:=StripHttps(PEURL,AReq);
+      Icon:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_ICON+IconExtension+'?'+PATH_PARAM_ID+'='+UID;
+      Genre:=AFeedName;
+      Bookmark:=PATH_HTTP+URLHost+'/'+PATH_SETUPAPP+'/'+PATH_FAVXML_ASP+'?'+PATH_PARAM_ID+'='+UID+'&'+PATH_FAVACTION+'='+PATH_FAVACTION_ADD;
     end;
 end;
 
@@ -1048,7 +1207,18 @@ begin
           Location:=ReplaceDiacritics(Location, ATranslatorIdx);
         end;
       Description:=Name+' : '+RBSHomePageURL;
-      URL:=StripHttps(RBSURL,AReq);
+// An HTTPS-only station goes through the relay: rewriting the scheme, as
+// all-as-http does, only works while the station still answers on port 80.
+      if NeedsRelay(RBSURL) then
+        URL:=RelayURLFor(UID)
+      else
+        begin
+          URL:=StripHttps(RBSURL,AReq);
+// Hand the AVR our own play endpoint so the playlist is unwrapped when the
+// station is actually selected, not while the listing is being rendered.
+          if ResolvePlaylists and LooksLikePlaylist(URL) then
+            URL:=PATH_HTTP+URLHost+'/'+PATH_ROOT+'/'+PATH_PLAY+'?'+PATH_PARAM_ID+'='+UID;
+        end;
       if RBSTags='' then
         Genre:=AReq.RouteParams[PATH_CATEGORY]
       else
@@ -1101,6 +1271,36 @@ begin
   end;
 end;
 // END - Display AVR messsages
+
+// BEGIN - Relay support
+function ResolveRelayStationURL(const AID: string): string;
+var
+  LRBStation: TRBStation;
+  LEpisode: TPodcastEpisode;
+begin
+  Result:='';
+  case AID.Substring(0,2) of
+    MY_STATIONS_PREFIX:
+      with GetMyStationByID(AID) do
+        if Station.MSID<>'' then
+          Result:=Station.MSURL;
+    PODCASTS_PREFIX:
+      if GetPodcastEpisodeByID(AID,LEpisode) then
+        Result:=LEpisode.PEURL;
+    RADIOBROWSER_PREFIX:
+      begin
+        LRBStation:=TRBStation.Create;
+        try
+          GetRBStationByID(LRBStation,AID.Substring(3,12),0);
+          if LRBStation.RBSID<>'' then
+            Result:=LRBStation.RBSURL;
+        finally
+          LRBStation.Free;
+        end;
+      end;
+  end;
+end;
+// END - Relay support
 
 end.
 

@@ -7,7 +7,7 @@ unit common;
 interface
 
 uses
-  Classes, SysUtils, IdStack, IdGlobal, StrUtils, crc,
+  Classes, SysUtils, syncobjs, IdStack, IdGlobal, StrUtils, crc,
 {$IFDEF UNIX}
   dl,
 {$ENDIF}
@@ -86,6 +86,10 @@ const
   INI_IP_ADDRESS = 'IPAddress';
   INI_ACT_AS_HOST = 'ActAsHost';
   INI_USE_SSL = 'UseSSL';
+  INI_RESOLVE_PLAYLISTS = 'ResolvePlaylists';
+  INI_LOCAL_COUNTRY = 'LocalCountry';
+  INI_RELAY_HTTPS = 'RelayHTTPS';
+  INI_RELAY_PORT = 'RelayPort';
   INI_REDIRECT_HTTP_CODE = 'RedirectHTTPCode';
   INI_MESSAGE_INFO_LEVEL = 'MessageInfoLevel';
   INI_ICON_SIZE = 'IconSize';
@@ -101,6 +105,10 @@ const
   INI_MYSTATIONS = 'MyStations';
   INI_MY_STATIONS_FILE = 'MyStationsFile';
   INI_MY_STATIONS_AUTO_REFRESH_PERIOD = 'MyStationsAutoRefreshPeriod';
+  INI_PODCASTS = 'Podcasts';
+  INI_PODCASTS_FILE = 'PodcastsFile';
+  INI_PODCASTS_EPISODES_LIMIT = 'PodcastEpisodesLimit';
+  INI_PODCASTS_CACHE_TTL = 'PodcastCacheTTL';
   INI_RADIOBROWSER = 'RadioBrowser';
   INI_RB_API_URL = 'RBAPIURL';
   INI_RB_POPULAR_AND_SEARCH_STATIONS_LIMIT = 'RBPopularAndSearchStationsLimit';
@@ -120,9 +128,17 @@ const
   INI_DNSSERVER_PORT = 'DNSServerPort';
   INI_INTERCEPT_DNS = 'InterceptDNs';
   INI_DNSSERVERS = 'DNSServers';
+  INI_DNS_ADVERTISE_IP = 'DNSAdvertiseIP';
+  INI_DNS_RESTRICT_FORWARDING = 'RestrictForwarding';
+  INI_DNS_ALLOWED_CLIENTS = 'AllowedClients';
   INI_MAINTENANCESERVER = 'MaintenanceServer';
   INI_MAINTENANCESERVER_IPADDRESS = 'MaintenanceServerIPAddress';
   INI_MAINTENANCESERVER_PORT = 'MaintenanceServerPort';
+  INI_WEBGUI = 'WebGUI';
+  INI_WEBGUI_IPADDRESS = 'WebGUIIPAddress';
+  INI_WEBGUI_PORT = 'WebGUIPort';
+  INI_WEBGUI_USER = 'WebGUIUser';
+  INI_WEBGUI_PASSWORD = 'WebGUIPassword';
 
 // Outbound HTTP is bounded so a stalled remote host cannot pin a request thread
 // forever. An AVR's vTuner browser waits on one request at a time, so an
@@ -155,6 +171,7 @@ const
   RADIOBROWSER_PREFIX = 'RB';
   UNKNOWN_PREFIX = 'UN';
   PATH_MY_STATIONS = 'mystations';
+  PATH_PODCASTS = 'podcasts';
 
   PATH_PARAM_ID = 'id';
   PATH_PARAM_MAC = 'mac';
@@ -177,6 +194,15 @@ const
 
   CACHE_EXT = '.cache';
 
+// Many radio-browser URLs point at a playlist wrapper rather than the audio
+// stream. Firmware of this era often cannot follow one, so YTuner can unwrap it
+// first. .m3u8 is deliberately absent: it is HLS, and its entries are variant
+// playlists or segments, none of which such a device could play either.
+  PLAYLIST_EXTENSIONS : array of string = ('.m3u','.pls','.asx','.xspf');
+  PLAYLIST_MAX_BYTES = 65536;
+  PLAYLIST_MAX_DEPTH = 2;
+  URL_DELIMITERS = ['"','''','<','>',' ',#9,#10,#13];
+
   ICON_SIZE = 200;
   ICON_CACHE = True;
   COMMON_AVR_INI = True;
@@ -195,6 +221,10 @@ var
   LogType: TLogType = ltError;
   MyAppPath: string;
   UseSSL: boolean = True;
+  ResolvePlaylists: boolean = False;
+// Country whose stations the "local" main-menu entry jumps straight to.
+// Empty means the entry is skipped entirely.
+  LocalCountry: string = '';
   CachePath: string = DEFAULT_STRING;
   ConfigPath: string = DEFAULT_STRING;
   DBPath: string = DEFAULT_STRING;
@@ -240,6 +270,11 @@ var
   {$ENDIF}
 {$ENDIF}
 
+var
+// Serialises log output. Created before any other unit's initialization can
+// log, since every unit depends on this one.
+  LogLock: TCriticalSection;
+
 procedure Logging(ALogType: TLogType; ALogMessage: string);
 function GetLocalIP(ADefaultIP: string): string;
 function CalcFileCRC32(AFileName: string): Cardinal;
@@ -252,6 +287,8 @@ function TryToFindSQLite3Lib(ALibFile: string): string;
 function LoadSQLite3Lib: boolean;
 function CheckSQLite3LibVer: boolean;
 function GetMyAppPath: string;
+function LooksLikePlaylist(AURL: string): boolean;
+function ResolveStreamURL(AURL: string): string;
 
 implementation
 uses radiobrowserdb;
@@ -276,8 +313,22 @@ procedure Logging(ALogType: TLogType; ALogMessage: string);
 begin
   if ALogType<=LogType then
     begin
-      ALogMessage[1]:=UpCase(ALogMessage[1]);
-      Writeln(DateTimeToStr(Now)+' : '+LOG_TYPE_MSG[ALogType]+' : '+ALogMessage+'.');
+// An empty message used to index position 1 of an empty string.
+      if not ALogMessage.IsEmpty then
+        ALogMessage[1]:=UpCase(ALogMessage[1]);
+// Every request runs on its own thread and Writeln is not atomic, so without
+// this lock lines from concurrent handlers interleave mid-word.
+      LogLock.Acquire;
+      try
+        Writeln(DateTimeToStr(Now)+' : '+LOG_TYPE_MSG[ALogType]+' : '+ALogMessage+'.');
+// Output is block-buffered whenever it is not a terminal, which is every way
+// this is actually deployed -- systemd, Docker, a Home Assistant add-on. Without
+// this the log arrives in 4 KB instalments, so the startup lines saying which
+// ports were bound can sit unseen for hours, and a crash loses them entirely.
+        Flush(Output);
+      finally
+        LogLock.Release;
+      end;
     end;
 end;
 
@@ -563,6 +614,97 @@ begin
     end;
 end;
 
+function LooksLikePlaylist(AURL: string): boolean;
+var
+  LPath, LExtension: string;
+begin
+  Result:=False;
+  LPath:=AURL.Split(['?'])[0].Split(['#'])[0].ToLower;
+  for LExtension in PLAYLIST_EXTENSIONS do
+    if LPath.EndsWith(LExtension) then
+      Exit(True);
+end;
+
+// Pulls the first playable URL out of a playlist body. One scan copes with all
+// four formats: PLS names it as FileN=, M3U puts it on its own line, and the
+// XML ones quote it inside an attribute or element.
+function FirstStreamURLInPlaylist(const ABody: string): string;
+var
+  LLine, LCandidate: string;
+  LStart, LEnd: integer;
+begin
+  Result:='';
+  for LLine in ABody.Split([#10,#13],TStringSplitOptions.ExcludeEmpty) do
+    begin
+      LCandidate:=LLine.Trim;
+      if LCandidate.IsEmpty or LCandidate.StartsWith('#') or LCandidate.StartsWith(';') then
+        Continue;
+      if LCandidate.ToLower.StartsWith('file') and LCandidate.Contains('=') then
+        LCandidate:=LCandidate.Substring(LCandidate.IndexOf('=')+1).Trim;
+      if LCandidate.ToLower.StartsWith('http') then
+        Exit(LCandidate);
+    end;
+// Nothing line-oriented matched, so this is one of the XML formats: take the
+// first absolute URL and stop at whatever quotes or closes it.
+  LStart:=ABody.ToLower.IndexOf('http://');
+  if LStart<0 then
+    LStart:=ABody.ToLower.IndexOf('https://');
+  if LStart<0 then
+    Exit;
+  LEnd:=LStart;
+  while (LEnd<ABody.Length) and (not (ABody.Chars[LEnd] in URL_DELIMITERS)) do
+    Inc(LEnd);
+  Result:=ABody.Substring(LStart,LEnd-LStart).Trim;
+end;
+
+function FetchPlaylist(AURL: string): string;
+var
+  LStream: TStringStream;
+begin
+  Result:='';
+  LStream:=TStringStream.Create('');
+  try
+    with TLocalHttpClient.Create(PLAYLIST_MAX_BYTES) do
+      try
+        AllowRedirect:=True;
+        AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+        try
+          Get(AURL,LStream);
+        except
+          on E: Exception do
+// A playlist bigger than the cap is aborted mid-transfer; whatever arrived is
+// still worth parsing, since the entry we want is at the top.
+            Logging(ltDebug, string.Join(' ',['Playlist',MSG_GETTING,MSG_ERROR,AURL,'('+E.Message+')']));
+        end;
+      finally
+        Free;
+      end;
+    Result:=LStream.DataString;
+  finally
+    LStream.Free;
+  end;
+end;
+
+function ResolveStreamURL(AURL: string): string;
+var
+  LDepth: integer = 0;
+  LNext: string;
+begin
+  Result:=AURL;
+  while (LDepth<PLAYLIST_MAX_DEPTH) and LooksLikePlaylist(Result) do
+    begin
+      LNext:=FirstStreamURLInPlaylist(FetchPlaylist(Result));
+      if LNext.IsEmpty or (LNext=Result) then
+        begin
+          Logging(ltDebug, string.Join(' ',['Playlist could not be resolved:',Result]));
+          Exit;
+        end;
+      Logging(ltDebug, string.Join(' ',['Playlist resolved:',Result,'->',LNext]));
+      Result:=LNext;
+      LDepth:=LDepth+1;
+    end;
+end;
+
 function GetMyAppPath: string;
 begin
 {$IFDEF UNIX}
@@ -574,6 +716,12 @@ begin
 {$ENDIF}
     Result:=ProgramDirectory;
 end;
+
+initialization
+  LogLock:=TCriticalSection.Create;
+
+finalization
+  LogLock.Free;
 
 end.
 

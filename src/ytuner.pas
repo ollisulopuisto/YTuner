@@ -22,8 +22,8 @@ uses
   {$IFDEF USESSL}
   openssl, opensslsockets,
   {$ENDIF}
-  regexpr, my_stations, vtuner, httpserver, radiobrowser, common, bookmark,
-  dnsserver, threadtimer, avr, maintenance, radiobrowserdb;
+  regexpr, my_stations, podcasts, vtuner, httpserver, radiobrowser, common, bookmark,
+  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui;
 
 // {$DEFINE FREE_ON_FINAL}
 // Enable the FREE_ON_FINAL directive in IdCompilerDefines.inc of Indy library to remove standard (ie, intentional) Indy memory leaks.
@@ -102,6 +102,7 @@ procedure ReadINIConfiguration;
 var
   LToken: string;
   LRBCacheTypeIdx: integer;
+  LLogLevel: integer;
   LCacheFolderLocation, LConfigFolderLocation, LDBFolderLocation: string;
 begin
   with TIniFile.Create(MyAppPath+'ytuner.ini') do
@@ -109,7 +110,16 @@ begin
       try
         if not ValueExists(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL) then
           WriteInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4);
-        LogType:=TLogType(ReadInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4));
+// Clamped rather than cast blindly: a value outside 0..4 produced an invalid
+// enum, which silently changed which messages were logged.
+        LLogLevel:=ReadInteger(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL,4);
+        if (LLogLevel<Ord(Low(TLogType))) or (LLogLevel>Ord(High(TLogType))) then
+          begin
+            LogType:=ltDebug;
+            Logging(ltWarning, INI_MESSAGE_INFO_LEVEL+' must be 0..'+Ord(High(TLogType)).ToString+'. Using '+Ord(ltDebug).ToString+'.');
+          end
+        else
+          LogType:=TLogType(LLogLevel);
       except
         LogType:=ltError;
       end;
@@ -139,6 +149,22 @@ begin
       if not ValueExists(INI_CONFIGURATION,INI_USE_SSL) then
         WriteString(INI_CONFIGURATION,INI_USE_SSL,'1');
       UseSSL:=ReadBool(INI_CONFIGURATION,INI_USE_SSL,True);
+
+      if not ValueExists(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS) then
+        WriteString(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,'0');
+      ResolvePlaylists:=ReadBool(INI_CONFIGURATION,INI_RESOLVE_PLAYLISTS,False);
+
+      if not ValueExists(INI_CONFIGURATION,INI_LOCAL_COUNTRY) then
+        WriteString(INI_CONFIGURATION,INI_LOCAL_COUNTRY,'');
+      LocalCountry:=ReadString(INI_CONFIGURATION,INI_LOCAL_COUNTRY,'').Trim;
+
+      if not ValueExists(INI_CONFIGURATION,INI_RELAY_HTTPS) then
+        WriteString(INI_CONFIGURATION,INI_RELAY_HTTPS,'0');
+      RelayHTTPS:=ReadBool(INI_CONFIGURATION,INI_RELAY_HTTPS,False);
+
+      if not ValueExists(INI_CONFIGURATION,INI_RELAY_PORT) then
+        WriteInteger(INI_CONFIGURATION,INI_RELAY_PORT,RELAY_PORT);
+      RelayPort:=ReadInteger(INI_CONFIGURATION,INI_RELAY_PORT,RelayPort);
 
       if not ValueExists(INI_CONFIGURATION,INI_REDIRECT_HTTP_CODE) then
         WriteInteger(INI_CONFIGURATION,INI_REDIRECT_HTTP_CODE,HTTP_CODE_REDIRECT);
@@ -214,6 +240,24 @@ begin
       if not ValueExists(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD) then
         WriteInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
       MyStationsAutoRefreshPeriod:=ReadInteger(INI_MYSTATIONS,INI_MY_STATIONS_AUTO_REFRESH_PERIOD,0);
+
+      if not ValueExists(INI_PODCASTS,INI_ENABLE) then
+        WriteString(INI_PODCASTS,INI_ENABLE,'0');
+      PodcastsEnabled:=ReadBool(INI_PODCASTS,INI_ENABLE,False);
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_FILE) then
+        WriteString(INI_PODCASTS,INI_PODCASTS_FILE,PODCASTS_FILE_NAME);
+      PodcastsFileName:=ReadString(INI_PODCASTS,INI_PODCASTS_FILE,PodcastsFileName);
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT) then
+        WriteInteger(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT,PODCAST_EPISODES_LIMIT);
+      PodcastEpisodesLimit:=ReadInteger(INI_PODCASTS,INI_PODCASTS_EPISODES_LIMIT,PodcastEpisodesLimit);
+      if PodcastEpisodesLimit<1 then
+        PodcastEpisodesLimit:=PODCAST_EPISODES_LIMIT;
+
+      if not ValueExists(INI_PODCASTS,INI_PODCASTS_CACHE_TTL) then
+        WriteInteger(INI_PODCASTS,INI_PODCASTS_CACHE_TTL,PODCAST_CACHE_TTL);
+      PodcastCacheTTL:=ReadInteger(INI_PODCASTS,INI_PODCASTS_CACHE_TTL,PodcastCacheTTL);
 
       if not ValueExists(INI_RADIOBROWSER,INI_ENABLE) then
         WriteString(INI_RADIOBROWSER,INI_ENABLE,'1');
@@ -312,6 +356,38 @@ begin
         WriteString(INI_DNSSERVER,INI_DNSSERVERS,DNS_SERVERS);
       DNSServers:=ReadString(INI_DNSSERVER,INI_DNSSERVERS,DNSServers);
 
+      if not ValueExists(INI_WEBGUI,INI_ENABLE) then
+        WriteString(INI_WEBGUI,INI_ENABLE,'0');
+      WebGUIEnabled:=ReadBool(INI_WEBGUI,INI_ENABLE,False);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_IPADDRESS) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_IPADDRESS,WEBGUI_IPADDRESS);
+      WebGUIIPAddress:=ReadString(INI_WEBGUI,INI_WEBGUI_IPADDRESS,WEBGUI_IPADDRESS);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_PORT) then
+        WriteInteger(INI_WEBGUI,INI_WEBGUI_PORT,WEBGUI_PORT);
+      WebGUIPort:=ReadInteger(INI_WEBGUI,INI_WEBGUI_PORT,WebGUIPort);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_USER) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_USER,WEBGUI_USER);
+      WebGUIUser:=ReadString(INI_WEBGUI,INI_WEBGUI_USER,WEBGUI_USER);
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_PASSWORD) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
+      WebGUIPassword:=ReadString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
+
+      if not ValueExists(INI_DNSSERVER,INI_DNS_ADVERTISE_IP) then
+        WriteString(INI_DNSSERVER,INI_DNS_ADVERTISE_IP,'');
+      DNSAdvertiseIP:=ReadString(INI_DNSSERVER,INI_DNS_ADVERTISE_IP,'').Trim;
+
+      if not ValueExists(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING) then
+        WriteString(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING,'0');
+      DNSRestrictForwarding:=ReadBool(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING,False);
+
+      if not ValueExists(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS) then
+        WriteString(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS,'');
+      DNSAllowedClients:=ReadString(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS,'');
+
       if not ValueExists(INI_MAINTENANCESERVER,INI_ENABLE) then
         WriteString(INI_MAINTENANCESERVER,INI_ENABLE,'0');
       MaintenanceServiceEnabled:=ReadBool(INI_MAINTENANCESERVER,INI_ENABLE,False);
@@ -373,6 +449,9 @@ begin
 
   if MyStationsEnabled then
     CheckMyStationsThread(nil);
+
+  if PodcastsEnabled then
+    LoadPodcastFeeds;
 
   RemoveOldRBCacheFiles;
 
@@ -451,6 +530,22 @@ begin
           OnTimer:=@MyStationsRefreshOnTimer;
           StartTimer;
         end;
+    end;
+
+  if WebGUIEnabled and StartWebGUIServer then
+// Says who may reach it rather than what it bound to: on FPC 3.2.2 the socket
+// is open on every interface regardless, and the setting is enforced per
+// connection instead.
+    Logging(ltInfo, WEBGUI_SERVICE+': listening on port '+WebGUIPort.ToString
+      +', accepting '+IfThen(WebGUIIPAddress.IsEmpty or (WebGUIIPAddress=DEFAULT_STRING) or (WebGUIIPAddress='0.0.0.0'),
+                             'any client',WebGUIIPAddress));
+
+  if RelayHTTPS then
+    begin
+      OnRelayResolveURL:=@ResolveRelayStationURL;
+      RelayIPAddress:=WebServerIPAddress;
+// The listener logs its own address once the bind has actually succeeded.
+      StartRelayServer;
     end;
 
   if DNSServerEnabled and StartDNSServer then

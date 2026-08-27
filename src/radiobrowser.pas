@@ -301,6 +301,7 @@ procedure GetRBStationsUUIDs;
 var
   LLoadError: boolean = False;
   LStations: TStrings;
+  LResponse: string;
 
   function SaveRBStationsUUIDsToFile:boolean;
   var
@@ -321,12 +322,15 @@ var
       end
     else
       F:=FileCreate(RBUUIDsFilePath);
-    if F<>-1 then
+    if (F<>-1) and (not RBStationsUUIDs.IsEmpty) then
       begin
         FileWrite(F,RBStationsUUIDs[1],RBStationsUUIDs.Length);
         FileClose(F);
         Result:=True;
-      end;
+      end
+    else
+      if F<>-1 then
+        FileClose(F);
   end;
 
 begin
@@ -334,7 +338,17 @@ begin
   LStations:=TStringList.Create;
   try
     try
-      SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',RadiobrowserAPIRequest(AddBulkLimit(API_STATIONS_PATH)),LStations);
+// RadiobrowserAPIRequest logs its own failures and hands back an empty list
+// rather than raising, so without this check a failed or truncated download
+// would be parsed as if it were data -- and could overwrite a good cache file.
+      LResponse:=RadiobrowserAPIRequest(AddBulkLimit(API_STATIONS_PATH));
+      if LResponse.Trim.IsEmpty or (LResponse.Trim='[]') then
+        begin
+          LLoadError:=True;
+          Logging(ltWarning, MSG_RADIOBROWSER+' UUIDs '+MSG_NOT_LOADED+'. Empty response.');
+        end
+      else
+        SplitRegExpr('","'+API_ATTR_SERVERUUID+'".*?"'+API_ATTR_STATIONUUID+'":"',LResponse,LStations);
     except
       On E: Exception do
         begin
@@ -343,7 +357,7 @@ begin
         end;
     end;
   finally
-    if not LLoadError then
+    if (not LLoadError) and (LStations.Count>0) then
       begin
         LStations[0]:=LStations[0].Remove(0,LStations[0].IndexOf('"'+API_ATTR_STATIONUUID+'":"')+15);
         LStations[LStations.Count-1]:=LStations[LStations.Count-1].Substring(0,36);
@@ -479,13 +493,16 @@ begin
             if RBCacheType in [catFile,catMemStr] then
               RemoveEmptyCategory(ARBAllCategoryType,RBCACHE_CATEGORIES_PREFIX+AVRMACsArray[AAVRConfigIdx]+'-'+Ord(ARBAllCategoryType).ToString,HTTPDecode(AName),AAVRConfigIdx);
         finally
-          if Assigned(LJSONArray) then LJSONArray.Free;
+// The finally runs before the enclosing except handler, so anything raised in
+// the loop above freed this array here and then again in that handler. Free
+// leaves the reference dangling rather than nil, so Assigned still said yes and
+// the second free aborted the process. Niling it makes that free a no-op.
+          FreeAndNil(LJSONArray);
         end;
       except
         on E: Exception do
           begin
             Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%},MSG_ERROR,' ('+E.Message+')']));
-            if Assigned(LJSONArray) then LJSONArray.Free;
           end;
       end;
     end;
@@ -553,13 +570,12 @@ begin
                       SetRBCache(LRBCategories,LCacheName,AAVRConfigIdx);
                   end;
               finally
-                if Assigned(LJSONArray) then LJSONArray.Free;
+                FreeAndNil(LJSONArray);
               end;
             except
               on E: Exception do
                 begin
                   Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%},MSG_ERROR,' ('+E.Message+')']));
-                  if Assigned(LJSONArray) then LJSONArray.Free;
                 end;
             end;
           end;
@@ -638,13 +654,12 @@ begin
               end;
             end;
         finally
-          if Assigned(LJSONArray) then LJSONArray.Free;
+          FreeAndNil(LJSONArray);
         end;
       except
         on E: Exception do
           begin
             Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%},MSG_ERROR,' ('+E.Message+')']));
-            if Assigned(LJSONArray) then LJSONArray.Free;
           end;
       end;
     end;
@@ -676,6 +691,7 @@ end;
 function RBStationsAVRFilter(ARBStationJSONObject: TJSONObject; ARBAllCategoryType: TRBAllCategoryTypes; AAVRConfigIdx: integer): boolean;
 var
   LBR: integer = 0;
+  LBitrate: TJSONData;
 begin
   Result:=True;
   with ARBStationJSONObject, AVRConfigArray[AAVRConfigIdx], AVRConfigArray[AAVRConfigIdx].RBFilter do
@@ -701,11 +717,27 @@ begin
 
       if Result then
         begin
+// The bitrate arrives as a JSON number, and the old guard compared it to an
+// empty string. Converting '' to a number raises, so merely setting BitrateMax
+// made every station in every listing raise "Invalid variant type cast" -- and
+// on the way out that exception hit the double free in GetStationsByCategory
+// and took the process with it. Reading the node directly avoids the variant
+// conversion entirely, and a missing or non-numeric field reads as 0 rather
+// than excluding the station.
+          LBR:=0;
+          if BitrateMax>0 then
+            begin
+              LBitrate:=Find(API_ATTR_BITRATE);
+              if Assigned(LBitrate) and (LBitrate.JSONType=jtNumber) then
+                LBR:=LBitrate.AsInteger;
+            end;
           if (Length(AllowedCodecs)>0) and (not HaveCommonElements(IfThen(Get(API_ATTR_CODEC)='',AVR_FILTER_EMPTY,Get(API_ATTR_CODEC)),AllowedCodecs)) then Result:=False else
           if (Length(NotAllowedCodecs)>0) and (HaveCommonElements(IfThen(Get(API_ATTR_CODEC)='',AVR_FILTER_EMPTY,Get(API_ATTR_CODEC)),NotAllowedCodecs)) then Result:=False else
           if ((Protocol=AVR_PROTOCOL_HTTP) or (Protocol=AVR_PROTOCOL_HTTPS)) and (Pos(Protocol+'://',Get(API_ATTR_URL))=0) then Result:=False else
-          if (BitrateMax>0) and (TryStrToInt(IfThen(Get(API_ATTR_BITRATE)='','0',Get(API_ATTR_CODEC)),LBR)) and (LBR>BitrateMax) then Result:=False else
-          if (Length(NotAllowedInName)>0) and (ContainsIn(Get(API_ATTR_URL),NotAllowedInName)) then Result:=False else
+          if (BitrateMax>0) and (LBR>BitrateMax) then Result:=False else
+// Test the name, not the URL, which is what the line below already tests --
+// name blocklists in avr.ini did nothing, and URL blocklists ran twice.
+          if (Length(NotAllowedInName)>0) and (ContainsIn(Get(API_ATTR_NAME),NotAllowedInName)) then Result:=False else
           if (Length(NotAllowedInURL)>0) and (ContainsIn(Get(API_ATTR_URL),NotAllowedInURL)) then Result:=False;
         end;
     end;
@@ -931,7 +963,9 @@ begin
                           if LoadRBObjects(LRBCategories,LCacheFileName,0,0)>0 then
                             begin
                               LIdx:=LRBCategories.IndexOf(AName);
-                              if LIdx>0 then
+// IndexOf reports absence as -1, so the test has to be >=0. As >0 it skipped
+// the first category in the list, which then never got pruned.
+                              if LIdx>=0 then
                                 begin
                                   LRBCategories.Delete(LIdx);
                                   Result:=SaveRBObjects(LRBCategories,LCacheFileName);
@@ -956,7 +990,7 @@ begin
                         if LoadRBObjects(LRBCategories,CRBRecords,0,0)>0 then
                           begin
                             LIdx:=LRBCategories.IndexOf(AName);
-                            if LIdx>0 then
+                            if LIdx>=0 then
                               begin
                                 LRBCategories.Delete(LIdx);
                                 Result:=SaveRBObjects(LRBCategories,CRBRecords);
