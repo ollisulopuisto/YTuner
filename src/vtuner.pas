@@ -1,6 +1,6 @@
 unit vtuner;
 
-// YTuner: vTuner classes unit.
+// Retuner: vTuner classes unit.
 
 {$mode ObjFPC}{$H+}
 
@@ -82,13 +82,13 @@ const
   VT_XML_RELIA = 'Relia';
   VT_XML_BOOKMARK = 'Bookmark';
   VT_XML_ENCRYPTEDTOKEN = '<EncryptedToken></EncryptedToken>';
-  PATH_PARAM_DUMMY = '?ytuner=true';
+  PATH_PARAM_DUMMY = '?retuner=true';
 
   VT_TOKEN = '0123456789ABCDEF';
 var
   MyToken: string = VT_TOKEN;
 
-function AddYTunerParameter(URL: string): string;
+function AddRetunerParameter(URL: string): string;
 
 implementation
 
@@ -169,8 +169,8 @@ begin
     begin
       AppendChild(AXMLDoc.CreateElement(VT_XML_ITEMTYPE)).AppendChild(AXMLDoc.CreateTextNode(VT_XML_DIR));
       AppendChild(AXMLDoc.CreateElement(VT_XML_TITLE)).AppendChild(AXMLDoc.CreateTextNode(Title));
-      AppendChild(AXMLDoc.CreateElement(VT_XML_URLDIR)).AppendChild(AXMLDoc.CreateTextNode(AddYTunerParameter(Destination)));
-      AppendChild(AXMLDoc.CreateElement(VT_XML_URLDIRBACKUP)).AppendChild(AXMLDoc.CreateTextNode(AddYTunerParameter(Destination)));
+      AppendChild(AXMLDoc.CreateElement(VT_XML_URLDIR)).AppendChild(AXMLDoc.CreateTextNode(AddRetunerParameter(Destination)));
+      AppendChild(AXMLDoc.CreateElement(VT_XML_URLDIRBACKUP)).AppendChild(AXMLDoc.CreateTextNode(AddRetunerParameter(Destination)));
       AppendChild(AXMLDoc.CreateElement(VT_XML_DIRCOUNT)).AppendChild(AXMLDoc.CreateTextNode(IntToStr(ItemCount)));
     end;
 end;
@@ -213,9 +213,9 @@ begin
     end;
 end;
 
-function AddYTunerParameter(URL: string): string;
+function AddRetunerParameter(URL: string): string;
 begin
-  AddYTunerParameter:=URL+PATH_PARAM_DUMMY;
+  AddRetunerParameter:=URL+PATH_PARAM_DUMMY;
 end;
 
 end.

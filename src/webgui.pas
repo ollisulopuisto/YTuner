@@ -1,10 +1,10 @@
 unit webgui;
 
-// YTuner: browser-based editor for the "My Stations" list.
+// Retuner: browser-based editor for the "My Stations" list.
 //
 // Runs on its own listener rather than as routes on the AVR-facing web server,
 // for two reasons: that server is reachable by anything on the network (and by
-// the internet, if YTuner is hosted remotely), and this one writes to config
+// the internet, if Retuner is hosted remotely), and this one writes to config
 // files. Keeping it separate means it can be bound and firewalled on its own.
 //
 // It is off by default, binds to loopback unless told otherwise, and refuses to
@@ -475,7 +475,7 @@ begin
 // files, which is not something to leave to whoever can reach the port.
   if WebGUIPassword.IsEmpty then
     begin
-      Logging(ltError, WEBGUI_SERVICE+': no password set. Set WebGUIPassword in ytuner.ini; not starting.');
+      Logging(ltError, WEBGUI_SERVICE+': no password set. Set WebGUIPassword in retuner.ini; not starting.');
       Exit;
     end;
   WebGUIThreadID:=BeginThread(@WebGUIServerThread);

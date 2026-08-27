@@ -1,6 +1,6 @@
 unit translator;
 
-// YTuner: Translator unit.
+// Retuner: Translator unit.
 
 {$mode ObjFPC}{$H+}
 

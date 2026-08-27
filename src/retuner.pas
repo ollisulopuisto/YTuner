@@ -1,13 +1,16 @@
-program ytuner;
+program retuner;
 
-// YTuner main unit.
+// Retuner main unit.
 
-// YTuner is a simple project designed to replace vTuner internet radio service and dedicated to
+// Retuner is a simple project designed to replace vTuner internet radio service and dedicated to
 // all users of AVRs made by Yamaha, Denon, Onkyo, Marantz and others with built-in vTuner support.
 
+// Retuner is a fork of YTuner by Greg P. (https://github.com/coffeegreg/YTuner),
+// whose work almost all of this is.
+//
 // Copyright (c) 2023 Greg P. (https://github.com/coffeegreg)
-// YTuner is licensed under MIT license.
-// See the https://github.com/coffeegreg/YTuner/blob/master/LICENSE.txt file for more details.
+// Copyright (c) 2026 Olli Sulopuisto (Retuner, a fork of YTuner)
+// MIT licensed, as YTuner is. See LICENSE.txt, which carries both notices.
 
 {$mode objfpc}{$H+}
 
@@ -28,7 +31,7 @@ uses
 // {$DEFINE FREE_ON_FINAL}
 // Enable the FREE_ON_FINAL directive in IdCompilerDefines.inc of Indy library to remove standard (ie, intentional) Indy memory leaks.
 // Look at the comments in the finalization sections of IdThread.pas and IdStack.pas.
-// Due to the fact described above YTuner has 3 unfreed memory blocks : 120.
+// Due to the fact described above Retuner has 3 unfreed memory blocks : 120.
 
 function GetRBStationsUUIDsThread(AP:Pointer):PtrInt;
 begin
@@ -108,6 +111,24 @@ begin
   BeginThread(@RefreshPresetsThread);
 end;
 
+// An install predating the rename has ytuner.ini and no retuner.ini. Renaming it
+// keeps every setting, rather than silently starting from defaults -- which
+// would not look like a failure, it would look like the config was ignored.
+procedure MigrateLegacyConfig;
+var
+  LNew, LOld: string;
+begin
+  LNew:=MyAppPath+CONFIG_FILE_NAME;
+  LOld:=MyAppPath+CONFIG_FILE_NAME_LEGACY;
+  if FileExists(LNew) or (not FileExists(LOld)) then
+    Exit;
+  if RenameFile(LOld,LNew) then
+    Logging(ltInfo, 'Renamed '+CONFIG_FILE_NAME_LEGACY+' to '+CONFIG_FILE_NAME)
+  else
+    Logging(ltWarning, 'Found '+CONFIG_FILE_NAME_LEGACY+' but could not rename it to '+
+                       CONFIG_FILE_NAME+'; copy it across by hand, or settings will be defaults');
+end;
+
 procedure ReadINIConfiguration;
 var
   LToken: string;
@@ -115,7 +136,8 @@ var
   LLogLevel: integer;
   LCacheFolderLocation, LConfigFolderLocation, LDBFolderLocation: string;
 begin
-  with TIniFile.Create(MyAppPath+'ytuner.ini') do
+  MigrateLegacyConfig;
+  with TIniFile.Create(MyAppPath+CONFIG_FILE_NAME) do
     try
       try
         if not ValueExists(INI_CONFIGURATION,INI_MESSAGE_INFO_LEVEL) then

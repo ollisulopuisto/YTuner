@@ -1,6 +1,6 @@
 unit podcasts;
 
-// YTuner: Podcasts from RSS feeds.
+// Retuner: Podcasts from RSS feeds.
 //
 // A podcast maps onto the vTuner model almost exactly: the feed is a directory
 // and each episode is a station whose URL is the enclosure. Nothing about the
@@ -195,7 +195,7 @@ begin
   LClient:=TLocalHttpClient.Create(PODCAST_MAX_BYTES);
   try
     LClient.AllowRedirect:=True;
-    LClient.AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+    LClient.AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
     try
       LClient.Get(AURL,AStream);
       Result:=AStream.Size>0;

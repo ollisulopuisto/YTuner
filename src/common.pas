@@ -1,6 +1,6 @@
 unit common;
 
-// YTuner: Common constants, variables and procedures.
+// Retuner: Common constants, variables and procedures.
 
 {$mode ObjFPC}{$H+}
 
@@ -38,11 +38,20 @@ const
   APP_COPYRIGHT = 'a fork of YTuner '+APP_VERSION+' by Greg P. (MIT) - https://github.com/ollisulopuisto/retuner';
   INI_VERSION = '1.2.2';
 
-  YTUNER_USER_AGENT = 'Retuner';
-// NOT renamed: this placeholder is written into saved bookmark files and
-// swapped for the real host when they are read back, so changing it would
-// orphan every bookmark an AVR has already stored.
-  YTUNER_HOST = 'ytunerhost';
+  RETUNER_USER_AGENT = 'Retuner';
+
+  CONFIG_FILE_NAME = 'retuner.ini';
+// What the file was called before the rename. Renamed to the above on first
+// start so an existing install keeps its settings; see MigrateLegacyConfig.
+  CONFIG_FILE_NAME_LEGACY = 'ytuner.ini';
+// Bookmark files store the host as a placeholder and get the real one put back
+// when they are read. New files are written with this.
+  BOOKMARK_HOST = 'retunerhost';
+// What files written before the rename carry. Accepted on read and never
+// written, so an AVR's existing bookmarks keep resolving and quietly convert to
+// the new placeholder the next time they are saved. See SubstHost in
+// bookmark.pas -- dropping this would orphan every bookmark already stored.
+  BOOKMARK_HOST_LEGACY = 'ytunerhost';
 
   LOG_TYPE_MSG : array[TLogType] of string = ('','Inf','Wrn','Err','Dbg');
 
@@ -82,11 +91,11 @@ const
   MSG_RBUUID_CACHE_FILE = 'RB UUIDs cache file';
 
   MSG_INI_WARNING1 = 'You are running out of INI file! Some features may not work properly!';
-  MSG_INI_WARNING2 = 'Your ytuner.ini file is outdated! Some features may not work properly!';
+  MSG_INI_WARNING2 = 'Your retuner.ini file is outdated! Some features may not work properly!';
   MSG_INI_WARNING3 = 'Retuner will try to fill in the missing options, but check their description and usage on https://github.com/ollisulopuisto/retuner/tree/master/cfg.';
   MSG_VTUNER_ERROR_LINK1 = 'Obslolete vTuner radio station link - trying redirect to ';
   MSG_VTUNER_ERROR_LINK2 = 'Obslolete vTuner radio station link can not be resolved - trying redirect to your first radio station of stations.ini/yaml file.';
-  MSG_FIRST_STATION_NEEDED = 'Be sure you have at least one category and one (first one) radio station DIRECT link in stations.ini/yaml file and option "Enable=1" is placed in "[MyStations]" section of ytuner.ini file .';
+  MSG_FIRST_STATION_NEEDED = 'Be sure you have at least one category and one (first one) radio station DIRECT link in stations.ini/yaml file and option "Enable=1" is placed in "[MyStations]" section of retuner.ini file .';
   MSG_REDIRECT_SUPPORT_NEEDED = 'Your AVR must support HTTP redirects! See "RedirectHTTPCode" option.';
 
   INI_CONFIGURATION = 'Configuration';
@@ -207,7 +216,7 @@ const
   CACHE_EXT = '.cache';
 
 // Many radio-browser URLs point at a playlist wrapper rather than the audio
-// stream. Firmware of this era often cannot follow one, so YTuner can unwrap it
+// stream. Firmware of this era often cannot follow one, so Retuner can unwrap it
 // first. .m3u8 is deliberately absent: it is HLS, and its entries are variant
 // playlists or segments, none of which such a device could play either.
   PLAYLIST_EXTENSIONS : array of string = ('.m3u','.pls','.asx','.xspf');
@@ -679,7 +688,7 @@ begin
     with TLocalHttpClient.Create(PLAYLIST_MAX_BYTES) do
       try
         AllowRedirect:=True;
-        AddHeader(HTTP_HEADER_USER_AGENT,YTUNER_USER_AGENT+'/'+APP_VERSION);
+        AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
         try
           Get(AURL,LStream);
         except
@@ -721,7 +730,7 @@ function GetMyAppPath: string;
 begin
 {$IFDEF UNIX}
 // At this moment I have no better idea how to detect Alpine Linux Busybox ?
-// ! In this case, enter the YTuner directory first and then run it with ./ytuner !
+// ! In this case, enter the Retuner directory first and then run it with ./retuner !
   if ParamStr(0).Contains('ld-musl-') then
     Result:='./'
   else

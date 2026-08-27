@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build YTuner on Linux/BSD with plain FPC — no Lazarus IDE required.
+# Build Retuner on Linux/BSD with plain FPC — no Lazarus IDE required.
 #
 #   ./script/build.sh              release build -> bin/<cpu>-<os>/ytuner
 #   DEBUG=1 ./script/build.sh      unoptimised build with debug info
@@ -96,7 +96,7 @@ fpc -MObjFPC -Scghi $OPTS -vew -FC"$SHIM" \
   -Fi"$INDY_DIR/Core" -Fi"$INDY_DIR/System" -Fi"$INDY_DIR/Protocols" \
   -Fu"$ROOT/src" \
   -FU"$BUILD_DIR/units" \
-  -o"$TARGET_DIR/ytuner" \
-  "$ROOT/src/ytuner.pas"
+  -o"$TARGET_DIR/retuner" \
+  "$ROOT/src/retuner.pas"
 
-echo "Built $TARGET_DIR/ytuner"
+echo "Built $TARGET_DIR/retuner"

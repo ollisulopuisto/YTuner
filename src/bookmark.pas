@@ -1,6 +1,6 @@
 unit bookmark;
 
-//Ytuner: AVR bookmark feature support unit.
+//Retuner: AVR bookmark feature support unit.
 
 {$mode ObjFPC}{$H+}
 
@@ -30,6 +30,15 @@ var
   BookmarkStationsLimit: integer = BOOKMARK_STATIONS_LIMIT;
 
 implementation
+
+// Puts the real host back into a value read from a bookmark file. Both
+// placeholders are accepted: a file written before the rename carries the old
+// one, and an AVR's bookmarks long outlive any version of this server.
+function SubstHost(const AValue, AHost: string): string;
+begin
+  Result:=StringReplace(AValue,BOOKMARK_HOST,AHost,[rfIgnoreCase]);
+  Result:=StringReplace(Result,BOOKMARK_HOST_LEGACY,AHost,[rfIgnoreCase]);
+end;
 
 function GetBookmarkFileName(AMAC: string): string;
 begin
@@ -91,9 +100,9 @@ begin
 // whole favourites list down with it -- a 404 on every request until the file
 // was hand-edited. GetBookmarkStationInfo already guards the same way.
                   if LastChild.FindNode(VT_XML_LOGO).HasChildNodes then
-                    LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+                    LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=SubstHost(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,URLHost);
                   if LastChild.FindNode(VT_XML_BOOKMARK).HasChildNodes then
-                    LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+                    LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=SubstHost(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,URLHost);
                   if LAVRConfigIdx>=0 then
                     with AVRConfigArray[LAVRConfigIdx].Translator do
                       if ReplaceUTF8Latin1Supplement or ReplaceUTF8Latin1ExtendedA or ReplaceUTF8Latin1ExtendedB then
@@ -152,9 +161,9 @@ begin
               begin
                 AppendChild(LXMLBookmarkPart.ImportNode(LXMLBookmark.FirstChild.ChildNodes[LStationIdx],true));
                 if LastChild.FindNode(VT_XML_LOGO).HasChildNodes then
-                  LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+                  LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=SubstHost(LastChild.FindNode(VT_XML_LOGO).FirstChild.NodeValue,URLHost);
                 if LastChild.FindNode(VT_XML_BOOKMARK).HasChildNodes then
-                  LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,YTUNER_HOST,URLHost,[rfIgnoreCase]);
+                  LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=SubstHost(LastChild.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,URLHost);
                 WriteXML(LXMLBookmarkPart,AXMLStream);
               end;
         except
@@ -226,8 +235,8 @@ begin
                 LNode.FirstChild.FirstChild.NodeValue:=IntToStr(LItemCount+1);
                 LNode:=LXMLBookmark.ImportNode(ANode,true);
                 LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,PATH_FAVACTION+'='+PATH_FAVACTION_ADD,PATH_FAVACTION+'='+PATH_FAVACTION_DEL,[rfIgnoreCase]);
-                LNode.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LNode.FindNode(VT_XML_LOGO).FirstChild.NodeValue,URLHost,YTUNER_HOST,[rfIgnoreCase]);
-                LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,URLHost,YTUNER_HOST,[rfIgnoreCase]);
+                LNode.FindNode(VT_XML_LOGO).FirstChild.NodeValue:=StringReplace(LNode.FindNode(VT_XML_LOGO).FirstChild.NodeValue,URLHost,BOOKMARK_HOST,[rfIgnoreCase]);
+                LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue:=StringReplace(LNode.FindNode(VT_XML_BOOKMARK).FirstChild.NodeValue,URLHost,BOOKMARK_HOST,[rfIgnoreCase]);
                 LXMLBookmark.DocumentElement.AppendChild(LNode);
                 WriteXMLFile(LXMLBookmark,AMAC);
               end;

@@ -1,40 +1,40 @@
-# YTuner in Docker container
-If you can't live without containers and you think that every day without creating a new container is a wasted day, you can also run YTuner in a container.
+# Retuner in Docker container
+If you can't live without containers and you think that every day without creating a new container is a wasted day, you can also run Retuner in a container.
 ## Assumptions
-In my opinion, there is no point in placing `cache`, `config` and `db` with the contents in the container and we should use `CacheFolderLocation`, `ConfigFolderLocation` and `DBFolderLocation` options of `ytuner.ini` file and point to host resources to remain persistent.
+In my opinion, there is no point in placing `cache`, `config` and `db` with the contents in the container and we should use `CacheFolderLocation`, `ConfigFolderLocation` and `DBFolderLocation` options of `retuner.ini` file and point to host resources to remain persistent.
 Therefore, in this short description I'll focus on this scenario, but of course everyone can choose their own.
->Tip: In the description below, I'll use Ubuntu 22.04 LTS as a host, `x86_64-linux` YTuner binaries and Alpine Linux Docker image to make my container as small as possible.
+>Tip: In the description below, I'll use Ubuntu 22.04 LTS as a host, `x86_64-linux` Retuner binaries and Alpine Linux Docker image to make my container as small as possible.
 
 If you are familiar with building Docker containers, you may want to skip reading further. If not, don't worry and read on.
 ## That's easy
 ### 1) Install Docker
 Use a well-documented procedure: https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
-### 2) Prepare YTuner binaries and configuration
-First, let's prepare some host shared volume (i.e. ~/YTuner) and copy your YTuner's config and `my_station.ini/yaml` files.
+### 2) Prepare Retuner binaries and configuration
+First, let's prepare some host shared volume (i.e. ~/Retuner) and copy your Retuner's config and `my_station.ini/yaml` files.
 ```
-ladm@localubuntu20:~$ mkdir YTuner && cd YTuner && mkdir config
-ladm@localubuntu20:~/YTuner$ 
+ladm@localubuntu20:~$ mkdir Retuner && cd Retuner && mkdir config
+ladm@localubuntu20:~/Retuner$ 
 ```
-Now, let's prepare `YTuner-docker` directory :
+Now, let's prepare `Retuner-docker` directory :
 ```
-ladm@localubuntu20:~$ mkdir YTuner-docker && cd YTuner-docker
-ladm@localubuntu20:~/YTuner-docker$ 
+ladm@localubuntu20:~$ mkdir Retuner-docker && cd Retuner-docker
+ladm@localubuntu20:~/Retuner-docker$ 
 ```
-Get YTuner binaries :
+Get Retuner binaries :
 ```
 ladm@localubuntu20:~/YTuner-docker$ wget https://github.com/coffeegreg/YTuner/releases/download/1.2.2/ytuner-1.2.2-x86_64-linux.zip
 ```
 or build your own from source.
 
-Extract `ytuner` and `ytuner.ini` files only :
+Extract `retuner` and `retuner.ini` files only :
 ```
-ladm@localubuntu20:~/YTuner-docker$ unzip -d x86_64-linux/ ytuner-1.2.2-x86_64-linux.zip ytuner ytuner.ini
+ladm@localubuntu20:~/Retuner-docker$ unzip -d x86_64-linux/ retuner-1.2.2-x86_64-linux.zip retuner retuner.ini
 ```
-Make `ytuner` executable :
+Make `retuner` executable :
 ```
-ladm@localubuntu20:~/YTuner-docker$ sudo chmod +x x86_64-linux/ytuner
+ladm@localubuntu20:~/Retuner-docker$ sudo chmod +x x86_64-linux/retuner
 ```
-Edit and change the `ytuner.ini` file as you wish, but remember to set the following options :
+Edit and change the `retuner.ini` file as you wish, but remember to set the following options :
 ```
 CacheFolderLocation=/app/host-shared
 ConfigFolderLocation=/app/host-shared
@@ -53,20 +53,20 @@ RUN apk --no-cache add sqlite-libs
 # Set working directory in the container image.
 WORKDIR /app
 
-# Copy the YTuner files from host into container image.
+# Copy the Retuner files from host into container image.
 COPY x86_64-linux/ /app/
  
 # Make the TCP/UDP ports to outside the container.
 EXPOSE 80/tcp
 EXPOSE 53/udp
 
-# Run YTuner.
-CMD ["./ytuner"]
+# Run Retuner.
+CMD ["./retuner"]
 ```
 ### 3) Building Docker container
-Now you are ready to build your Docker container with YTuner binaries :
+Now you are ready to build your Docker container with Retuner binaries :
 ```
-ladm@localubuntu20:~/YTuner-docker$ sudo docker build -t ytuner:1.2.2 .
+ladm@localubuntu20:~/Retuner-docker$ sudo docker build -t retuner:1.2.2 .
 +] Building 0.7s (10/10) FINISHED                                                                                                   docker:default
  => [internal] load build definition from Dockerfile                                                                                           0.0s
  => => transferring dockerfile: 674B                                                                                                           0.0s
@@ -83,20 +83,20 @@ ladm@localubuntu20:~/YTuner-docker$ sudo docker build -t ytuner:1.2.2 .
  => exporting to image                                                                                                                         0.0s
  => => exporting layers                                                                                                                        0.0s
  => => writing image sha256:0f5a6853d85c813d2351ff27199b2576b619d63863eb4020fa4e08feaf22f7e6                                                   0.0s
- => => naming to docker.io/library/ytuner:1.2.2                                                                                                0.0s
+ => => naming to docker.io/library/retuner:1.2.2                                                                                                0.0s
 ```
 >Tip: 1.2.2 is a version related tag. You can use other values.
 
-Congratulations, your YTuner Docker container has been built. You can see it :
+Congratulations, your Retuner Docker container has been built. You can see it :
 ```
-ladm@localubuntu20:~/YTuner-docker$ sudo docker images
+ladm@localubuntu20:~/Retuner-docker$ sudo docker images
 REPOSITORY    TAG       IMAGE ID       CREATED          SIZE
-ytuner        1.2.2     0f5a6853d85c   26 seconds ago   11.4MB
+retuner        1.2.2     0f5a6853d85c   26 seconds ago   11.4MB
 ```
-### 4) Running YTuner in Docker container
+### 4) Running Retuner in Docker container
 Now, you're ready to go:
 ```
-ladm@localubuntu20:~/YTuner-docker$ sudo docker run --rm --network host -v ~/YTuner:/app/host-shared ytuner:1.2.2
+ladm@localubuntu20:~/Retuner-docker$ sudo docker run --rm --network host -v ~/Retuner:/app/host-shared retuner:1.2.2
 YTuner v1.2.2 Copyright (c) 2024 Greg P. (https://github.com/coffeegreg)
 24-1-24 22:20:47 : Inf : Starting services...
 24-1-24 22:20:47 : Inf : Successfully loaded 10 my stations.
@@ -121,9 +121,9 @@ YTuner v1.2.2 Copyright (c) 2024 Greg P. (https://github.com/coffeegreg)
 24-1-24 22:22:20 : Inf : DNS Service: listening on: 192.168.1.140:53.
 24-1-24 22:22:20 : Inf : Web Service: listening on: 192.168.1.140:80.
 ```
-If you stop running YTuner container and start it again YTuner will use database or cache files already stored on host shared volume. 
+If you stop running Retuner container and start it again Retuner will use database or cache files already stored on host shared volume. 
 ```
-ladm@localubuntu20:~/YTuner-docker$ sudo docker run --rm --network host -v ~/YTuner:/app/host-shared ytuner:1.2.2
+ladm@localubuntu20:~/Retuner-docker$ sudo docker run --rm --network host -v ~/Retuner:/app/host-shared retuner:1.2.2
 YTuner v1.2.2 Copyright (c) 2024 Greg P. (https://github.com/coffeegreg)
 24-1-24 22:17:38 : Inf : Starting services...
 24-1-24 22:17:38 : Inf : Successfully loaded 10 my stations.

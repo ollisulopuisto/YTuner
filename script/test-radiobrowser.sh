@@ -3,7 +3,7 @@
 # audit fixed. Each check here corresponds to a bug that was shipped once:
 # without them, nothing stops any of it coming back.
 #
-#   ./script/test-radiobrowser.sh [path-to-ytuner]
+#   ./script/test-radiobrowser.sh [path-to-retuner]
 #
 # A local HTTP server stands in for radio-browser.info, so this needs no
 # network access and no privileged ports.
@@ -14,7 +14,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BIN=${1:-}
 if [ -z "$BIN" ]; then
   # shellcheck disable=SC2012  # one glob under bin/, named by the target triple
-  BIN=$(ls "$ROOT"/bin/*/ytuner 2>/dev/null | head -1) \
+  BIN=$(ls "$ROOT"/bin/*/retuner 2>/dev/null | head -1) \
     || { echo "error: no binary found; run script/build.sh first" >&2; exit 1; }
 fi
 [ -x "$BIN" ] || { echo "error: $BIN is not executable" >&2; exit 1; }
@@ -36,7 +36,7 @@ fail=0
 ok()   { echo "  ok   $1"; }
 bad()  { echo "  FAIL $1"; fail=1; }
 
-cp "$BIN" "$WORK/ytuner"
+cp "$BIN" "$WORK/retuner"
 
 start_rb() {
   python3 "$MOCK" "$RB_PORT" "$1" >/dev/null 2>&1 &
@@ -74,7 +74,7 @@ stop_rb() {
 MAC=aabbccddee
 write_config() {
   mkdir -p "$WORK/config"
-  cat > "$WORK/ytuner.ini" <<INI
+  cat > "$WORK/retuner.ini" <<INI
 [Configuration]
 INIVersion=1.2.2
 MessageInfoLevel=4
@@ -115,7 +115,7 @@ INI
 }
 
 start_server() {
-  ( cd "$WORK" && ./ytuner > "$1" 2>&1 ) &
+  ( cd "$WORK" && ./retuner > "$1" 2>&1 ) &
   PID=$!
   i=0
   while [ "$i" -lt 60 ]; do
@@ -138,7 +138,7 @@ stop_server() {
 
 stations() {
   curl -fsS --noproxy '*' \
-    "http://127.0.0.1:$PORT/ytuner/radiobrowser/country/Testland?mac=$MAC" 2>/dev/null || true
+    "http://127.0.0.1:$PORT/retuner/radiobrowser/country/Testland?mac=$MAC" 2>/dev/null || true
 }
 
 has() {

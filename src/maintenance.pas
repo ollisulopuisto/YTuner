@@ -1,6 +1,6 @@
 unit maintenance;
 
-// YTuner: Maintenance service(s). Diagnostic, maintenance and future goals.
+// Retuner: Maintenance service(s). Diagnostic, maintenance and future goals.
 
 {$mode ObjFPC}{$H+}
 
@@ -36,7 +36,7 @@ var
 
 function MaintenaceHTTPServerThread(AP:Pointer):PtrInt;
 procedure StartMaintenaceHTTPServer;
-procedure YTunerServiceDown(Sender: TObject);
+procedure RetunerServiceDown(Sender: TObject);
 
 implementation
 
@@ -86,7 +86,7 @@ end;
 procedure TMaintenaceHTTPServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
 begin
 // Host is a caller-supplied header, so it proved nothing about where the
-// request came from: anyone on the network could stop YTuner by sending
+// request came from: anyone on the network could stop Retuner by sending
 // "Host: 127.0.0.1". Older FPC has no TFPHTTPServer.Address to bind with, so
 // authorise on the peer address instead.
   if ARequest.RemoteAddress<>MaintenanceServerIPAddress then
@@ -99,7 +99,7 @@ begin
     '/'+PATH_ROOT+'/down':
       begin
         ServerResponse(HTTP_CODE_OK,ctNone,AResponse,string.Join(': ',[APP_NAME+' '+MSG_SERVICE,MSG_SHUTTING_DOWN+'...']));
-        YTunerServiceDown(Sender);
+        RetunerServiceDown(Sender);
       end;
   else
 // Every other URI used to be answered with "Shutting down..." as well.
@@ -155,7 +155,7 @@ begin
   ThreadTimerDown(GTThread);
 end;
 
-procedure YTunerServiceDown(Sender: TObject);
+procedure RetunerServiceDown(Sender: TObject);
 var
   i: integer;
 begin

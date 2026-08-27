@@ -1,6 +1,6 @@
 unit avr;
 
-// YTuner: AVR unit.
+// Retuner: AVR unit.
 
 {$mode ObjFPC}{$H+}
 

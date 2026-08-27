@@ -1,6 +1,6 @@
 unit threadtimer;
 
-// YTuner: thread timer unit.
+// Retuner: thread timer unit.
 
 {$mode objfpc}{$H+}
 
