@@ -226,7 +226,7 @@ begin
   try
     P.Add('<!doctype html><html lang="en"><head><meta charset="utf-8">');
     P.Add('<meta name="viewport" content="width=device-width,initial-scale=1">');
-    P.Add('<title>YTuner stations</title><style>');
+    P.Add('<title>Retuner stations</title><style>');
     P.Add(':root{--bg:#f6f5f2;--card:#fff;--ink:#1c2530;--soft:#5b6875;--line:#dcd8d0;--accent:#0e7d86;--danger:#b3261e}');
     P.Add('@media(prefers-color-scheme:dark){:root{--bg:#151b21;--card:#1d252d;--ink:#e6ebef;--soft:#a3aeb8;--line:#2d3742;--accent:#3fc1cb;--danger:#ff8a80}}');
     P.Add('*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}');
@@ -245,6 +245,19 @@ begin
     P.Add('.bar{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:14px 0;display:flex;gap:10px;align-items:center}');
     P.Add('.msg{font-size:14px;color:var(--soft)}.err{color:var(--danger)}');
     P.Add('.ro{background:#f9f0dd;border:1px solid #e0c98a;color:#6b4f14;padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:14px}');
+    P.Add('@media(max-width:640px){');
+    P.Add('.wrap{padding:20px 14px 80px}h1{font-size:22px}');
+    P.Add('.cat{padding:12px}');
+    P.Add('table,tbody,tr,td{display:block;width:100%}');
+    P.Add('tr.hd{display:none}');
+    P.Add('tr{border:1px solid var(--line);border-radius:6px;padding:10px;margin-bottom:10px;position:relative}');
+    P.Add('td{padding:4px 0}');
+    P.Add('td[data-l]::before{content:attr(data-l);display:block;font-size:11px;letter-spacing:.08em;');
+    P.Add('text-transform:uppercase;color:var(--soft);margin-bottom:3px}');
+// The delete button is the one cell with no field under it, so it is pinned to
+// the card's top-right corner rather than left to sit on a row of its own.
+    P.Add('td:last-child{position:absolute;top:6px;right:6px;width:auto;padding:0}');
+    P.Add('}');
     P.Add('</style></head><body><div class="wrap">');
     P.Add('<h1>My Stations</h1><p class="sub" id="status">Loading&hellip;</p>');
     P.Add('<div id="ro" class="ro" hidden>This station file is YAML. Editing here supports .ini files only, so saving is disabled.</div>');
@@ -260,16 +273,17 @@ begin
     P.Add(' data.categories.forEach((cat,ci)=>{const d=el("div",{className:"cat"});');
     P.Add('  const h=el("div",{className:"cathead"});');
     P.Add('  const n=el("input",{value:cat.name,className:"catname"});n.oninput=e=>cat.name=e.target.value;');
-    P.Add('  const rm=el("button",{className:"x",textContent:"\\u00d7",title:"Remove category"});');
+    P.Add('  const rm=el("button",{className:"x",textContent:"\u00d7",title:"Remove category"});');
     P.Add('  rm.onclick=()=>{data.categories.splice(ci,1);draw()};');
     P.Add('  h.append(n,rm);d.append(h);');
-    P.Add('  const t=el("table");const hr=el("tr");');
+    P.Add('  const t=el("table");const hr=el("tr",{className:"hd"});');
     P.Add('  ["Name","Stream URL","Logo URL (optional)",""].forEach(x=>hr.append(el("th",{textContent:x})));');
     P.Add('  t.append(hr);');
     P.Add('  cat.stations.forEach((s,si)=>{const r=el("tr");');
-    P.Add('   [["name"],["url"],["logo"]].forEach(([k])=>{const td=el("td");');
+    P.Add('   [["name","Name"],["url","Stream URL"],["logo","Logo URL"]].forEach(([k,lab])=>{');
+    P.Add('    const td=el("td");td.setAttribute("data-l",lab);');
     P.Add('    const i=el("input",{value:s[k]||""});i.oninput=e=>s[k]=e.target.value;td.append(i);r.append(td)});');
-    P.Add('   const td=el("td");const b=el("button",{className:"x",textContent:"\\u00d7",title:"Remove station"});');
+    P.Add('   const td=el("td");const b=el("button",{className:"x",textContent:"\u00d7",title:"Remove station"});');
     P.Add('   b.onclick=()=>{cat.stations.splice(si,1);draw()};td.append(b);r.append(td);t.append(r)});');
     P.Add('  d.append(t);');
     P.Add('  const add=el("button",{textContent:"+ Add station"});');
@@ -281,12 +295,12 @@ begin
     P.Add(' document.getElementById("save").disabled=readonly;');
     P.Add(' const s=await(await fetch("api/status",{headers:H})).json();');
     P.Add(' document.getElementById("status").textContent=');
-    P.Add('  s.app+" "+s.version+" \\u2014 "+s.stations+" stations in "+s.categories+" categories \\u2014 "+s.file;');
+    P.Add('  s.app+" "+s.version+" \u2014 "+s.stations+" stations in "+s.categories+" categories \u2014 "+s.file;');
     P.Add(' draw()}');
     P.Add('document.getElementById("addcat").onclick=()=>{data.categories.push({name:"New category",stations:[]});draw()};');
     P.Add('document.getElementById("reload").onclick=()=>{msg("");load()};');
     P.Add('function msg(t,bad){const m=document.getElementById("msg");m.textContent=t;m.className="msg"+(bad?" err":"")}');
-    P.Add('document.getElementById("save").onclick=async()=>{msg("Saving\\u2026");');
+    P.Add('document.getElementById("save").onclick=async()=>{msg("Saving\u2026");');
     P.Add(' const r=await fetch("api/stations",{method:"POST",headers:H,body:JSON.stringify(data)});');
     P.Add(' const j=await r.json();');
     P.Add(' if(j.error){msg(j.error,true)}else{msg("Saved.");load()}};');
