@@ -46,8 +46,10 @@ procedure StartMaintenaceHTTPServer;
 begin
   with TMaintenaceHTTPServer.Create do
     try
+{$IF FPC_FULLVERSION >= 30300}
       FServer.KeepConnectionTimeout:=0;
       FServer.KeepConnections:=False;
+{$ENDIF}
       Server.Free;
       Sleep(3000);
     finally
@@ -69,7 +71,11 @@ begin
       Active:=False;
 //      Address:=MaintenanceServerIPAddress;   //New Trunk FPC only!
       Port:=MaintenanceServerPort;
+{$IF FPC_FULLVERSION >= 30300}
       ThreadMode:=tmNone;
+{$ELSE}
+      Threaded:=False;
+{$ENDIF}
       OnRequest:=@DoHandleRequest;
       Active:=True;
     end;
