@@ -46,7 +46,12 @@ behind NAT from the receiver's point of view.
 **`web_port`** — 80 by default, because the receiver's firmware asks for port 80
 and that is not negotiable from Retuner's side. If something else on this
 machine already answers on port 80, the add-on will not start; changing the port
-here only helps if you also have a proxy putting it back on 80.
+here only helps if you also have a proxy putting it back on 80. A second address
+on this machine usually does not help either, because a Docker port mapping
+binds every address it has. When port 80 is genuinely spoken for, running
+Retuner on a small machine of its own is the way out —
+[doc/STANDALONE.md](https://github.com/ollisulopuisto/retuner/blob/master/doc/STANDALONE.md)
+has the whole recipe, including a systemd unit.
 
 **`local_country`** — put your country here (spelled as Radio Browser spells it,
 e.g. `Finland`) and a **Local Stations** entry appears in the main menu going
