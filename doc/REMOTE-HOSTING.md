@@ -1,82 +1,93 @@
 # Running on a remote host (VPS)
 
-Short answer: **yes, this works from a VPS** — an Oracle Free Tier instance, a small cloud VM, anything with a public address. Your AVR does not need YTuner on the same LAN. But three things behave differently off-LAN, and one of them is a hard limitation rather than a setting.
+YTuner does not have to sit on the same network as your AVR. It runs perfectly well on a VPS — an Oracle Free Tier instance, a small cloud VM, anything with a public address — and the setup on the listener's side is **one setting on the amplifier**. No router configuration, no Pi-hole, no extra box at home.
 
-## 1. The built-in DNS server will not work from a NAT'd VPS
+## The short version
 
-This is the part that surprises people, so it comes first.
+1. Run YTuner on the VPS with the config at the bottom of this page.
+2. Open TCP/80 and UDP/53 to the internet.
+3. On the AVR: Network settings → set DNS server to the VPS's public address.
 
-YTuner's DNS service answers `*.vtuner.com` lookups with **the address of the interface the query arrived on** (`ABinding.IP` in `dnsserver.pas`). On a machine whose public address is NAT'd onto a private interface — which is exactly how Oracle Cloud, AWS, GCP and most VPS providers work — that is the *private* address, something like `10.0.0.x`. Your AVR would be told to connect there, and it would fail.
+That is the whole client-side setup, and it is done with the remote control. Nothing else at home changes, and no other device on the network is affected — only the AVR uses that DNS server.
 
-Setting `DNSServerIPAddress` to the public address does not help either: that value is passed through `GetLocalIP`, which only accepts an address that actually exists on a local interface and otherwise falls back to the first one it finds.
+## Why this works
 
-**So: turn the DNS server off and redirect the hostname on your own network instead.**
+The AVR's firmware has the vTuner hostname burned in, so the only way to reach YTuner instead is to control what that name resolves to. On a home network you do that at the router. Pointing the AVR's own DNS setting at YTuner achieves the same thing for that one device, and every AVR of this vintage exposes a manual DNS field.
+
+Two settings make it work off-LAN.
+
+**`DNSAdvertiseIP`** — the address YTuner puts in its intercepted answers. By default it answers with the address the query arrived on, which is right on a LAN but wrong behind NAT: on a VPS that is the private address (`10.0.0.x`), which your AVR cannot reach. Set it to the public address.
 
 ```ini
 [DNSServer]
-Enable=0
+DNSAdvertiseIP=203.0.113.10
 ```
 
-Then point `*.vtuner.com` at your VPS's public address using whatever already does DNS on your LAN — your router, Pi-hole, AdGuard Home, dnsmasq, OPNsense. That is the same override the built-in server exists to save you from configuring, and it is the only part of YTuner that genuinely needs to be near the AVR.
+**`RestrictForwarding`** — because a DNS server on the public internet that answers anything for anyone is an open resolver, and open resolvers get abused for amplification attacks. With this on:
 
-If your AVR lets you set a DNS server directly, pointing it at the VPS also works, provided you open UDP/53 — but think carefully before exposing a DNS resolver to the internet.
+- **vTuner names are answered for anybody.** Harmless: the reply is tiny and only ever points at your own server.
+- **Everything else is refused** unless the client is known.
+- **A client becomes known by reaching the web service.** Your AVR looks up the vTuner hostname, connects to YTuner over HTTP, and that connection reveals the address it is really coming from. From then on its station lookups are forwarded too.
 
-## 2. Set `ActAsHost`, or every link points somewhere unreachable
+That ordering is what keeps the setup to a single field on the amp: the AVR authorises itself, in the course of doing what it was going to do anyway. Entries last 24 hours and refresh on every visit, so a changing home IP sorts itself out. `AllowedClients` can pin extra addresses if you want them permanently allowed.
 
-YTuner builds the URLs it hands the AVR — station links, icons, bookmarks — from `URLHost`. Left at `default` that resolves through `GetLocalIP` to the machine's own interface address, which on a VPS is the private one again.
+```ini
+RestrictForwarding=1
+```
+
+## Also required
+
+**`ActAsHost`.** The URLs YTuner hands the AVR — stations, icons, bookmarks — are built from this. Left at `default` it resolves to the machine's own interface address, private again.
 
 ```ini
 [Configuration]
-ActAsHost=203.0.113.10        ; your public IP, or a hostname
+ActAsHost=203.0.113.10        ; public address, or a hostname
 ```
 
-A hostname works, and so does an explicit port if you ever need one (`ActAsHost=radio.example.com:8080`), since the value is used verbatim.
+**Port 80.** The AVR's firmware contacts the vTuner host on port 80 and that is not negotiable from YTuner's side. Binding it needs privileges: run as root, grant the capability once with `setcap 'cap_net_bind_service=+ep' ./ytuner`, or put a reverse proxy in front.
 
-## 3. Port 80 has to be reachable
+**On Oracle Cloud, two firewalls must both allow traffic** and only one is obvious:
 
-The AVR's firmware contacts the vTuner hostname on port 80 and that is not configurable from YTuner's side, so the entry point must be there.
+1. Ingress rules for TCP/80 and UDP/53 in the VCN security list (or network security group).
+2. The instance's own firewall. Oracle's images ship with restrictive `iptables`/`firewalld` rules, and forgetting this is the usual reason a correctly-configured security list still looks dead.
 
-```ini
-[WebServer]
-WebServerIPAddress=default
-WebServerPort=80
-```
+## What is exposed, and what is not
 
-On **Oracle Cloud** specifically, two firewalls must both allow it and only one is obvious:
+Port 80 is open to the internet, so anyone who finds it can browse your instance and stream through it on your bandwidth. Restricting the rule to your home address is worth doing if your address is stable. What is *not* a risk:
 
-1. An ingress rule for TCP/80 in the VCN security list (or network security group).
-2. The instance's own firewall. Oracle's images ship with restrictive `iptables`/`firewalld` rules, and forgetting this is the usual reason a correctly-configured security list still appears dead.
+- The icon, play and relay endpoints take a **station id**, never a URL, so none of them can be used as an open proxy — they only fetch what is in the station catalogue.
+- The DNS service is not an open resolver once `RestrictForwarding=1`.
+- The stations editor is off by default, binds to loopback, and refuses to start without a password.
+- The maintenance shutdown service is off by default and authorises on the peer address.
 
-Binding port 80 needs privileges: run as root, grant the capability once with `setcap 'cap_net_bind_service=+ep' ./ytuner`, or put a reverse proxy in front.
-
-## Restrict it to yourself
-
-On a VPS your YTuner is world-reachable, so add a source restriction to that TCP/80 rule — your home IP, or a VPN. This matters more than it might seem, though less than you might fear:
-
-- The icon, play and relay endpoints all take a **station id**, never a URL, so nobody can hand YTuner an arbitrary address and use it as an open proxy. It will only fetch things in its own station catalogue.
-- The maintenance shutdown service is off by default, and when enabled it authorises on the peer address.
-- But the bookmark endpoints write files keyed by the MAC in the query string, so a stranger could create or pollute bookmark files, and anyone who finds the port can browse and stream through your instance on your bandwidth.
-
-`MyToken` is not authentication — the login endpoint hands it out to anyone who asks. Do not treat it as a lock.
+`MyToken` is **not** authentication — the login endpoint hands it to anyone who asks. Do not treat it as a lock.
 
 ## What actually crosses the VPS
 
-Only menus, by default. Once the AVR has a station's URL it connects to the station **directly**, so audio never touches your VPS and its location does not affect playback at all — only how quickly menus paint.
+Only menus, by default. Once the AVR has a station's URL it connects to the station **directly**, so audio never touches your VPS and its location does not affect playback — only how quickly menus paint.
 
-That changes if you enable `RelayHTTPS`. A relayed station is fetched by YTuner and re-served, so its audio flows in and out of the VPS for as long as you listen, doubling that traffic against your egress allowance and adding a hop. Oracle's Free Tier allowance is generous enough that ordinary listening is not a concern, but it is worth knowing which switch moves audio onto the machine.
+That changes if you enable `RelayHTTPS`. A relayed station is fetched by YTuner and re-served, so its audio flows in and out of the VPS for as long as you listen, doubling that traffic against your egress allowance. Oracle's Free Tier allowance is generous enough that ordinary listening is not a concern, but it is worth knowing which switch moves audio onto the machine.
 
-## Minimal VPS configuration
+## Full VPS configuration
 
 ```ini
 [Configuration]
-ActAsHost=203.0.113.10        ; public IP or hostname -- not "default"
+ActAsHost=203.0.113.10        ; public address or hostname -- not "default"
 
 [WebServer]
 WebServerIPAddress=default
 WebServerPort=80
 
 [DNSServer]
-Enable=0                      ; redirect *.vtuner.com on your own network instead
+Enable=1
+DNSServerIPAddress=default
+DNSServerPort=53
+DNSAdvertiseIP=203.0.113.10   ; public address: what the AVR is told to connect to
+RestrictForwarding=1          ; do not be an open resolver
 ```
 
-Plus, on your LAN: `*.vtuner.com` → `203.0.113.10`.
+Then, on the AVR: Network → DNS server → `203.0.113.10`.
+
+## If you would rather not expose DNS
+
+The alternative is the traditional one: leave `Enable=0` in `[DNSServer]` and redirect `*.vtuner.com` to the VPS on your own network, using your router, Pi-hole, AdGuard Home, dnsmasq or OPNsense. That needs no open UDP/53 on the VPS, but it does need a router you can configure — which is exactly what the DNS setting on the amp lets you avoid.

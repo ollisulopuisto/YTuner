@@ -7,7 +7,7 @@ unit dnsserver;
 interface
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, syncobjs, DateUtils,
   IdUDPServer, IdDNSServer, IdDNSCommon, IdGlobal, IdSocketHandle,
   common;
 
@@ -22,6 +22,9 @@ const
   DNSSERVER_PORT = 53;
   INTERCEPT_DNS = '*.vtuner.com';
   DNS_SERVERS = '8.8.8.8,9.9.9.9';
+// How long a client stays allowed to have queries forwarded after it was last
+// seen on the web service.
+  DNS_CLIENT_TTL_HOURS = 24;
 
 var
   IdDNSServerProxy: TIdDNSServerProxy;
@@ -30,6 +33,16 @@ var
   DNSServerEnabled: boolean = True;
   DNSServers: string = DNS_SERVERS;
   InterceptDNs: string = INTERCEPT_DNS;
+// Address to put in intercepted answers. Empty means "the address the query
+// arrived on", which is right on a LAN but wrong behind NAT, where that is the
+// private address and the AVR cannot reach it.
+  DNSAdvertiseIP: string = '';
+// Off by default so a LAN install keeps forwarding for every device that uses
+// it as a resolver. Turn it on when the service is reachable from the internet:
+// intercepted names are still answered for anyone, but anything else is
+// refused unless the client is known, so it is not an open resolver.
+  DNSRestrictForwarding: boolean = False;
+  DNSAllowedClients: string = '';
   DNSAnswerBytes: TBytes = ($C0,$0C,          // Name (Bin=1100000000001100 Dec=12). Pointer to first occurrence of the name.
                             $00,$01,          // Type: A (Host Address)
                             $00,$01,          // Class: IN
@@ -38,8 +51,53 @@ var
                             $00,$00,$00,$00); // 4 bytes reserved for IPv4 Address
 
 function StartDNSServer:boolean;
+// Records a client that has reached the web service, so that the AVR which just
+// asked us to resolve vtuner.com can also have its station lookups forwarded
+// without anyone configuring an allow list by hand.
+procedure DNSNoteWebClient(const AAddress: string);
 
 implementation
+
+var
+  DNSClientLock: TCriticalSection;
+  DNSKnownClients: TStringList;
+
+procedure DNSNoteWebClient(const AAddress: string);
+var
+  LIdx: integer;
+begin
+  if AAddress.Trim.IsEmpty then
+    Exit;
+  DNSClientLock.Enter;
+  try
+    LIdx:=DNSKnownClients.IndexOf(AAddress);
+    if LIdx<0 then
+      DNSKnownClients.AddObject(AAddress,TObject(PtrInt(DateTimeToUnix(Now))))
+    else
+      DNSKnownClients.Objects[LIdx]:=TObject(PtrInt(DateTimeToUnix(Now)));
+  finally
+    DNSClientLock.Leave;
+  end;
+end;
+
+function DNSClientAllowed(const AAddress: string): boolean;
+var
+  LIdx: integer;
+  LEntry: string;
+begin
+  Result:=False;
+  for LEntry in DNSAllowedClients.Split([',']) do
+    if LEntry.Trim=AAddress then
+      Exit(True);
+  DNSClientLock.Enter;
+  try
+    LIdx:=DNSKnownClients.IndexOf(AAddress);
+    Result:=(LIdx>=0)
+        and (DateTimeToUnix(Now)-PtrInt(DNSKnownClients.Objects[LIdx]) < DNS_CLIENT_TTL_HOURS*3600);
+  finally
+    DNSClientLock.Leave;
+  end;
+end;
 
 function StartDNSServer:boolean;
 begin
@@ -66,7 +124,12 @@ begin
         IP:=DNSServerIPAddress;
         IPVersion:=Id_IPv4;
       end;
-    IdDNSServerProxy.IdDNSServer.Active:=True;
+// Only the UDP tunnel is activated. Activating the whole server would also
+// bring up Indy's TCP tunnel, which keeps its own default of port 53 whatever
+// DNSServerPort says -- so the service quietly took TCP 53 as well, needing
+// privileges it was not asked for and colliding with any other resolver on the
+// host. Interception is UDP-only, so the TCP side is not wanted at all.
+    IdDNSServerProxy.IdDNSServer.UDPTunnel.Active:=True;
   except
     On E: Exception do
       begin
@@ -84,7 +147,9 @@ procedure TIdDNSServerProxy.IdDNS_UDPServerDoAfterQuery(ABinding: TIdSocketHandl
 var
   LInterceptDN: string;
   LDNQuery: string;
+  LAdvertise: string;
   LQueryResult: TBytes;
+  LIntercepted: boolean = False;
 
   function ReplaceSpecSymbol(S: String): String;
   var
@@ -123,22 +188,57 @@ begin
               LQueryResult[7]:=$01;            //Answer RRs: 1
 
               AppendBytes(LQueryResult,DNSAnswerBytes);
-              LQueryResult[Length(LQueryResult)-4]:=StrToInt(ABinding.IP.Split(['.'])[0]);
-              LQueryResult[Length(LQueryResult)-3]:=StrToInt(ABinding.IP.Split(['.'])[1]);
-              LQueryResult[Length(LQueryResult)-2]:=StrToInt(ABinding.IP.Split(['.'])[2]);
-              LQueryResult[Length(LQueryResult)-1]:=StrToInt(ABinding.IP.Split(['.'])[3]);
+// Behind NAT the address the query arrived on is the private one, which is no
+// use to the AVR, so a public deployment sets DNSAdvertiseIP explicitly.
+              LAdvertise:=DNSAdvertiseIP.Trim;
+              if LAdvertise.IsEmpty then
+                LAdvertise:=ABinding.IP;
+              LQueryResult[Length(LQueryResult)-4]:=StrToInt(LAdvertise.Split(['.'])[0]);
+              LQueryResult[Length(LQueryResult)-3]:=StrToInt(LAdvertise.Split(['.'])[1]);
+              LQueryResult[Length(LQueryResult)-2]:=StrToInt(LAdvertise.Split(['.'])[2]);
+              LQueryResult[Length(LQueryResult)-1]:=StrToInt(LAdvertise.Split(['.'])[3]);
               ResultCode:='RC';
               QueryResult:=LQueryResult;
+              LIntercepted:=True;
             end
           else
             begin
               ResultCode:='NA';
               QueryResult:=Query;
+              LIntercepted:=True;
             end;
           Break;
         end;
     end;
+
+// Anything we did not intercept was resolved upstream on the caller's behalf.
+// On a public host that would make this an open resolver, so unknown clients
+// get a refusal instead of the answer -- small, and useless for amplification.
+  if DNSRestrictForwarding and (not LIntercepted) and (not DNSClientAllowed(ABinding.PeerIP)) then
+    begin
+      Logging(ltDebug, 'DNS forwarding refused for '+ABinding.PeerIP+' ('+LDNQuery+')');
+      SetLength(LQueryResult,0);
+      AppendBytes(LQueryResult,Query);
+      if Length(LQueryResult)>=6 then
+        begin
+          LQueryResult[2]:=$81;       // response, recursion desired
+          LQueryResult[3]:=$85;       // recursion available + RCODE 5 (refused)
+          LQueryResult[6]:=$00;       // no answer records
+          LQueryResult[7]:=$00;
+        end;
+      QueryResult:=LQueryResult;
+      ResultCode:='RC';
+    end;
 end;
+
+initialization
+  DNSClientLock:=TCriticalSection.Create;
+  DNSKnownClients:=TStringList.Create;
+  DNSKnownClients.Sorted:=True;
+
+finalization
+  DNSKnownClients.Free;
+  DNSClientLock.Free;
 
 end.
 

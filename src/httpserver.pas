@@ -39,7 +39,7 @@ uses
   fpreadtiff,
 {$ENDIF}
   fphttpclient, httpdefs, httproute, DOM,
-  common, vtuner, my_stations, radiobrowser, bookmark, avr, translator, relayserver;
+  common, vtuner, my_stations, radiobrowser, bookmark, avr, translator, relayserver, dnsserver;
 
 const
   WEB_SERVICE = 'Web Service';
@@ -242,6 +242,11 @@ var
 
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
+// This is the AVR's entry point, so it is where we learn the address a device
+// actually reaches us from. On a public host that address is then allowed to
+// have its station lookups forwarded, which is what makes pointing an AVR's DNS
+// setting at this server enough on its own.
+  DNSNoteWebClient(AReq.RemoteAddress);
   if AReq.QueryFields.Values[PATH_PARAM_TOKEN]='0' then
     ServerResponse(HTTP_CODE_OK,ctXML,ARes,VT_XML_ENCRYPTEDTOKEN.Replace('><','>'+MyToken+'<'))
   else

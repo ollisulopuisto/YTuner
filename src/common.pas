@@ -124,6 +124,9 @@ const
   INI_DNSSERVER_PORT = 'DNSServerPort';
   INI_INTERCEPT_DNS = 'InterceptDNs';
   INI_DNSSERVERS = 'DNSServers';
+  INI_DNS_ADVERTISE_IP = 'DNSAdvertiseIP';
+  INI_DNS_RESTRICT_FORWARDING = 'RestrictForwarding';
+  INI_DNS_ALLOWED_CLIENTS = 'AllowedClients';
   INI_MAINTENANCESERVER = 'MaintenanceServer';
   INI_MAINTENANCESERVER_IPADDRESS = 'MaintenanceServerIPAddress';
   INI_MAINTENANCESERVER_PORT = 'MaintenanceServerPort';

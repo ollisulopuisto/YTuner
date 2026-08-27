@@ -348,6 +348,18 @@ begin
         WriteString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
       WebGUIPassword:=ReadString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
 
+      if not ValueExists(INI_DNSSERVER,INI_DNS_ADVERTISE_IP) then
+        WriteString(INI_DNSSERVER,INI_DNS_ADVERTISE_IP,'');
+      DNSAdvertiseIP:=ReadString(INI_DNSSERVER,INI_DNS_ADVERTISE_IP,'').Trim;
+
+      if not ValueExists(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING) then
+        WriteString(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING,'0');
+      DNSRestrictForwarding:=ReadBool(INI_DNSSERVER,INI_DNS_RESTRICT_FORWARDING,False);
+
+      if not ValueExists(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS) then
+        WriteString(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS,'');
+      DNSAllowedClients:=ReadString(INI_DNSSERVER,INI_DNS_ALLOWED_CLIENTS,'');
+
       if not ValueExists(INI_MAINTENANCESERVER,INI_ENABLE) then
         WriteString(INI_MAINTENANCESERVER,INI_ENABLE,'0');
       MaintenanceServiceEnabled:=ReadBool(INI_MAINTENANCESERVER,INI_ENABLE,False);
