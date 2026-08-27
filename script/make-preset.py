@@ -90,9 +90,27 @@ def category_of(station):
     return "Radio"
 
 
-def clean(text):
+def clean_name(text):
     """INI keys cannot carry '=' and the receiver's display cannot carry much."""
     return re.sub(r"\s+", " ", (text or "").replace("=", "-")).strip()[:48]
+
+
+def safe_url(text):
+    """A URL is not a display string: it must not be shortened or rewritten.
+
+    Running names and URLs through the same cleaner truncated every logo to 48
+    characters and turned '=' into '-', which quietly produced broken links --
+    a real Yle logo came out of the first generated preset as
+    https://images.cdn.yle.fi/f_auto,w_48,h_48,dpr_4 and nothing said so. The
+    only things that matter here are that the value carries no '|', which
+    separates stream from logo, and no newline, which would end the line early.
+    """
+    url = (text or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return ""
+    if "|" in url or "\n" in url or "\r" in url:
+        return ""
+    return url
 
 
 def build(args):
@@ -100,8 +118,9 @@ def build(args):
     print(f"{len(rows)} candidates for {args.country.upper()}", file=sys.stderr)
     groups, seen, dropped = OrderedDict(), set(), 0
     for s in rows:
-        name, url = clean(s.get("name")), (s.get("url_resolved") or s.get("url") or "").strip()
-        if not name or not url.startswith(("http://", "https://")) or name.lower() in seen:
+        name = clean_name(s.get("name"))
+        url = safe_url(s.get("url_resolved") or s.get("url"))
+        if not name or not url or name.lower() in seen:
             continue
         cat = category_of(s)
         if len(groups.get(cat, ())) >= args.per_category:
@@ -114,7 +133,7 @@ def build(args):
                 continue
             url = live
         seen.add(name.lower())
-        groups.setdefault(cat, []).append((name, url, clean(s.get("favicon"))))
+        groups.setdefault(cat, []).append((name, url, safe_url(s.get("favicon"))))
     write(args.out, args.country, groups)
     kept = sum(len(v) for v in groups.values())
     print(f"wrote {args.out}: {kept} stations in {len(groups)} categories"
