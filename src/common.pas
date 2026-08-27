@@ -28,12 +28,20 @@ type
   end;
 
 const
-  APP_NAME = 'YTuner';
+  APP_NAME = 'Retuner';
+// The version is the YTuner release this fork is based on, which is also what
+// INI_VERSION below tracks -- so it stays as it is rather than restarting at
+// 0.1. Greg P. keeps his line in the banner because nearly all of this code is
+// his: the notice in LICENSE.txt is the licence requirement, this is the
+// courtesy that ought to go with it.
   APP_VERSION = '1.2.6';
-  APP_COPYRIGHT = 'Copyright (c) 2024 Greg P. (https://github.com/coffeegreg)';
+  APP_COPYRIGHT = 'a fork of YTuner '+APP_VERSION+' by Greg P. (MIT) - https://github.com/ollisulopuisto/retuner';
   INI_VERSION = '1.2.2';
 
-  YTUNER_USER_AGENT = 'YTuner';
+  YTUNER_USER_AGENT = 'Retuner';
+// NOT renamed: this placeholder is written into saved bookmark files and
+// swapped for the real host when they are read back, so changing it would
+// orphan every bookmark an AVR has already stored.
   YTUNER_HOST = 'ytunerhost';
 
   LOG_TYPE_MSG : array[TLogType] of string = ('','Inf','Wrn','Err','Dbg');
@@ -75,7 +83,7 @@ const
 
   MSG_INI_WARNING1 = 'You are running out of INI file! Some features may not work properly!';
   MSG_INI_WARNING2 = 'Your ytuner.ini file is outdated! Some features may not work properly!';
-  MSG_INI_WARNING3 = 'YTuner will try to fill in the missing options, but check their description and usage on https://github.com/coffeegreg/YTuner/tree/master/cfg.';
+  MSG_INI_WARNING3 = 'Retuner will try to fill in the missing options, but check their description and usage on https://github.com/ollisulopuisto/retuner/tree/master/cfg.';
   MSG_VTUNER_ERROR_LINK1 = 'Obslolete vTuner radio station link - trying redirect to ';
   MSG_VTUNER_ERROR_LINK2 = 'Obslolete vTuner radio station link can not be resolved - trying redirect to your first radio station of stations.ini/yaml file.';
   MSG_FIRST_STATION_NEEDED = 'Be sure you have at least one category and one (first one) radio station DIRECT link in stations.ini/yaml file and option "Enable=1" is placed in "[MyStations]" section of ytuner.ini file .';

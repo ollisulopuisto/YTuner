@@ -78,7 +78,7 @@ check() {
 echo "Smoke testing $BIN on port $PORT"
 check "login token handshake" "/setupapp/x/loginxml.asp?token=0"        "EncryptedToken"
 check "main menu"             "/setupapp/x/loginxml.asp?mac=aabbccddee" "<ListOfItems>"
-check "about page"            "/ytuner/about?mac=aabbccddee"            "Welcome to YTuner"
+check "about page"            "/ytuner/about?mac=aabbccddee"            "Welcome to Retuner"
 check "empty folder message"  "/ytuner/empty?mac=aabbccddee"            "<ItemType>Display</ItemType>"
 
 if [ "$fail" -ne 0 ]; then

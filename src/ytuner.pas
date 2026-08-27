@@ -434,7 +434,7 @@ begin
   SetHeapTraceOutput('heap.trc');
   {$ENDIF DEBUG}
   MyAppPath:=GetMyAppPath;
-  Writeln(APP_NAME+' v'+APP_VERSION+' '+APP_COPYRIGHT);
+  Writeln(APP_NAME+' - '+APP_COPYRIGHT);
   ReadINIConfiguration;
 
   if not DirectoryExists(CachePath) then CreateDir(CachePath);

@@ -13,7 +13,7 @@ Upstream's last change to `src/` was in **April 2025**; every commit since has b
 - The maintenance shutdown endpoint authorised callers by the `Host` header, which the caller supplies.
 - The project only compiled with FPC **trunk**, so it could not be built with the compiler Debian, Ubuntu or Raspberry Pi OS ship — and on FPC 3.2.2 a latent stack buffer overflow in `CalcFileCRC32` crashed it during startup.
 
-The fixes are offered upstream as well. This fork exists so they are available now, not so the project is divided.
+No upstream pull requests have been opened yet; the fixes are meant to go back, and this note will say so once they have. The fork exists so they are available now, not so the project is divided.
 
 ## Why "Retuner"
 

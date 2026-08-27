@@ -24,7 +24,7 @@ const
   WEBGUI_PORT = 8090;
   WEBGUI_IPADDRESS = '127.0.0.1';
   WEBGUI_USER = 'admin';
-  WEBGUI_REALM = 'YTuner';
+  WEBGUI_REALM = 'Retuner';
 // A cross-origin HTML form can only send urlencoded, multipart or plain text.
 // Requiring a JSON content type therefore forces a CORS preflight, which this
 // API never answers, so another site cannot drive it with the browser's stored

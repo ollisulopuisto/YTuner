@@ -2,7 +2,7 @@
 """Renders the Retuner mark to PNG without any imaging library.
 
 Shapes are signed distance fields, so edges get analytic anti-aliasing and
-there is no supersampling to pay for. A tuning dial: teal scale, amber needle.
+there is no supersampling to pay for. An antenna mast (amber) throwing signal arcs (teal): radio, over a network.
 """
 import math, struct, zlib
 
@@ -28,45 +28,49 @@ def sd_capsule(px, py, ax, ay, bx, by, r):
 def sd_disc(px, py, cx, cy, r):
     return math.hypot(px - cx, py - cy) - r
 
+def sd_arc(px, py, cx, cy, rad, half, a0, a1):
+    """Ring segment between two angles, with rounded caps."""
+    dx, dy = px - cx, -(py - cy)
+    ang = math.degrees(math.atan2(dy, dx)) % 360
+    lo, hi = a0 % 360, a1 % 360
+    inside = (lo <= ang <= hi) if lo <= hi else (ang >= lo or ang <= hi)
+    if inside:
+        return abs(math.hypot(dx, dy) - rad) - half
+    best = 1e9
+    for a in (a0, a1):
+        ex, ey = polar(cx, cy, a, rad)
+        best = min(best, math.hypot(px - ex, py - ey) - half)
+    return best
+
 def polar(cx, cy, ang, rad):
     a = math.radians(ang)
     return cx + rad * math.cos(a), cy - rad * math.sin(a)
 
 def build(w, h):
-    cx, cy = 0.5, 0.54          # dial centre, in unit coords of the shorter side
-    px_unit = 1.0 / min(w, h)   # one pixel, in unit coords
-    # tick marks across the upper arc, longer at both ends and at centre
-    ticks = []
-    for i in range(7):
-        ang = 160.0 - i * 20.0
-        long_one = i in (0, 3, 6)
-        # inside the ring, not across it -- crossing it reads as gear teeth
-        r_out = 0.272
-        r_in = 0.196 if long_one else 0.232
-        ax, ay = polar(cx, cy, ang, r_in)
-        bx, by = polar(cx, cy, ang, r_out)
-        ticks.append((ax, ay, bx, by, 0.024 if long_one else 0.015))
-    nx, ny = polar(cx, cy, 62.0, 0.232)
+    # An antenna mast with signal arcs either side: the mast is radio, the arcs
+    # are the network. Symmetrical rather than the one-sided Wi-Fi fan, so it
+    # reads as broadcast rather than as a router.
+    cx = 0.5
+    top, foot = 0.375, 0.715       # mast ends, unit coords of the shorter side
+    px_unit = 1.0 / min(w, h)
+    arcs = [(0.145, 0.030), (0.245, 0.030)]   # radius, half-width
 
     rows = []
     for y in range(h):
         row = bytearray()
-        uy = (y + 0.5) / min(w, h) + (0 if h <= w else 0)
+        uy = (y + 0.5) / min(w, h)
         ux_off = (w - min(w, h)) / (2.0 * min(w, h))
         for x in range(w):
             ux = (x + 0.5) / min(w, h) - ux_off
-            # background plate: full bleed on a square, a rounded card on a banner
-            if w == h:
-                d = sd_round_box(ux, uy, 0.5, 0.5, 0.5, 0.5, 0.225)
-            else:
-                d = sd_round_box(ux, uy, 0.5, 0.5, (w / min(w, h)) * 0.5, 0.5, 0.225)
+            half_w = (w / min(w, h)) * 0.5
+            d = sd_round_box(ux, uy, 0.5, 0.5, half_w, 0.5, 0.225)
             a_bg = max(0.0, min(1.0, 0.5 - d / px_unit))
             r, g, b = BG
             a = a_bg
 
-            def over(sd, col, alpha_scale=1.0):
+            def over(sd, col):
                 nonlocal r, g, b, a
-                cov = max(0.0, min(1.0, 0.5 - sd / px_unit)) * alpha_scale
+                cov = max(0.0, min(1.0, 0.5 - sd / px_unit))
                 if cov <= 0.0:
                     return
                 cr, cg, cb = col
@@ -75,11 +79,12 @@ def build(w, h):
                 b = cb * cov + b * (1 - cov)
                 a = cov + a * (1 - cov)
 
-            over(sd_ring(ux, uy, cx, cy, 0.325, 0.019), SCALE)
-            for (ax, ay, bx, by, tw) in ticks:
-                over(sd_capsule(ux, uy, ax, ay, bx, by, tw), SCALE)
-            over(sd_capsule(ux, uy, cx, cy, nx, ny, 0.020), NEEDLE)
-            over(sd_disc(ux, uy, cx, cy, 0.052), HUB)
+            for rad, half in arcs:
+                over(sd_arc(ux, uy, cx, top, rad, half, 18.0, 72.0), SCALE)
+                over(sd_arc(ux, uy, cx, top, rad, half, 108.0, 162.0), SCALE)
+            over(sd_capsule(ux, uy, cx, top, cx, foot, 0.024), NEEDLE)
+            over(sd_capsule(ux, uy, cx - 0.115, foot, cx + 0.115, foot, 0.024), NEEDLE)
+            over(sd_disc(ux, uy, cx, top, 0.052), HUB)
 
             row += bytes((int(r + 0.5), int(g + 0.5), int(b + 0.5), int(a * 255 + 0.5)))
         rows.append(bytes(row))
