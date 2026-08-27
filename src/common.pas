@@ -32,7 +32,7 @@ const
 // CalVer: YY.MM.DD.N, N being the build within that day. The date a build was
 // cut is the useful thing to know about it -- semantic versioning would promise
 // an API this has never had.
-  APP_VERSION = '26.08.27.1';
+  APP_VERSION = '26.08.27.3';
 // The YTuner release this fork started from. Separate from APP_VERSION because
 // it means something different and does not move when we cut a build: putting
 // a Retuner version in the credit line below would attribute our releases to
@@ -235,6 +235,16 @@ const
 
   ICON_SIZE = 200;
   ICON_CACHE = True;
+// A station logo is fetched from whatever URL the directory carries, so these
+// are limits on what a stranger can make this process allocate. TFPMemoryImage
+// gives every pixel a TFPColor, which is eight bytes, so the pixel ceiling is
+// the one that matters: 16 Mpx is 128 MB of image, and a PNG that declares
+// 64000x64000 is a few KB on the wire and 32 GB decoded.
+  ICON_MAX_BYTES = 4*1024*1024;
+  ICON_MAX_EDGE = 8192;
+  ICON_MAX_PIXELS = 16*1024*1024;
+// Ids this server issues are a two letter prefix, an underscore and hex.
+  ICON_KEY_MAX_LENGTH = 64;
   COMMON_AVR_INI = True;
   RB_POPULAR_AND_SEARCH_STATIONS_LIMIT = 100;
   RB_MIN_STATIONS_PER_CATEGORY = 3;

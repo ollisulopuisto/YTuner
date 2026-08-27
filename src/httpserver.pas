@@ -19,7 +19,7 @@ unit httpserver;
 interface
 
 uses
-  Classes, SysUtils, StrUtils,
+  Classes, SysUtils, StrUtils, Math,
   fpimage, fpimgcanv,
 {$IFDEF WRITERJPG}
   fpwritejpeg,
@@ -40,6 +40,20 @@ uses
 {$ENDIF}
   fphttpclient, httpdefs, httproute, DOM,
   common, vtuner, my_stations, podcasts, radiobrowser, bookmark, avr, translator, relayserver, dnsserver;
+
+type
+  EIconTooLarge = class(Exception);
+
+// Every image reader announces the size it is about to decode by calling
+// SetSize, and TFPMemoryImage allocates there and then - before a single pixel
+// of the file has been read, and from numbers that came out of the file's
+// header. A header is a claim, not a measurement, and this is the one place
+// every format's reader passes through. See script/fuzz-test.sh, where an
+// 8000x8000 PNG of a few hundred bytes took the process to half a gigabyte.
+  TCappedImage = class(TFPMemoryImage)
+  public
+    procedure SetSize(AWidth, AHeight: integer); override;
+  end;
 
 const
   WEB_SERVICE = 'Web Service';
@@ -529,6 +543,36 @@ begin
   end;
 end;
 
+procedure TCappedImage.SetSize(AWidth, AHeight: integer);
+begin
+  if (AWidth<0) or (AHeight<0)
+    or (AWidth>ICON_MAX_EDGE) or (AHeight>ICON_MAX_EDGE)
+    or (Int64(AWidth)*Int64(AHeight)>ICON_MAX_PIXELS) then
+    raise EIconTooLarge.Create('image header claims '+AWidth.ToString+'x'+AHeight.ToString
+                              +', over the icon limit of '+ICON_MAX_EDGE.ToString+' per side and '
+                              +ICON_MAX_PIXELS.ToString+' pixels');
+  inherited SetSize(AWidth,AHeight);
+end;
+
+// The icon id becomes a file name under the cache directory, so it decides both
+// which file is read and which is written. Ids this server issues are a two
+// letter prefix, an underscore and hex; anything else was never an id.
+// Refused, not sanitised: '../secret.txt' is not a request to be repaired into
+// a different one. Until this existed, GET /retuner/icon?id=../secret.txt
+// returned that file's bytes with an image content type, to anyone who asked.
+function IsSafeIconKey(const AKey: string): boolean;
+var
+  LCh: char;
+begin
+  Result:=False;
+  if (AKey='') or (Length(AKey)>ICON_KEY_MAX_LENGTH) then
+    Exit;
+  for LCh in AKey do
+    if not (LCh in ['A'..'Z','a'..'z','0'..'9','_','-']) then
+      Exit;
+  Result:=True;
+end;
+
 procedure GetIcon(AReq: TRequest; ARes: TResponse);
 var
   LStream: TMemoryStream;
@@ -541,169 +585,192 @@ var
   LImageFile: string;
   LGetImageFromURL: boolean = True;
   LRBStation: TRBStation;
+  LNewWidth, LNewHeight: integer;
 begin
   Logging(ltDebug, AReq.Method+' '+AReq.URI);
   LImageFile:=AReq.QueryFields.Values[PATH_PARAM_ID];
-  LStream:=TMemoryStream.Create;
+  if not IsSafeIconKey(LImageFile) then
+    begin
+      Logging(ltWarning, 'Icon id refused, it is not an id');
+      ServerResponse(HTTP_CODE_NOT_FOUND,ctNone,ARes,'');
+      Exit;
+    end;
+// An image decoder handed a hostile file is the one place in this server where
+// a stranger picks the input to a C-shaped parser. A failure there must cost
+// the request, not the process: before this, a logo whose scaled height rounded
+// to zero raised out of the handler thread and ended the program.
   try
-    if IconCache and FileExists(CachePath+DirectorySeparator+LImageFile) then
-      begin
-        try
-          LStream.LoadFromFile(CachePath+DirectorySeparator+LImageFile);
-          if LStream.Size>0 then
-            begin
-              LGetImageFromURL:=False;
-              {$IFDEF WRITERJPG}
-              ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
-              {$ELSE}
-              {$IFDEF WRITERPNG}
-              ServerResponse(HTTP_CODE_OK,ctPNG,Res,LStream);
-              {$ENDIF}
-              {$ENDIF}
-            end;
-        except
-          on E : Exception do
-            Logging(ltError, LImageFile+MSG_FILE_LOAD_ERROR+' ('+E.Message+')');
-        end;
-      end;
-    if LGetImageFromURL then
-      begin
-        case LImageFile.Substring(0,2) of
-          MY_STATIONS_PREFIX: LURL:=GetMyStationByID(LImageFile).Station.MSLogoURL;
-          PODCASTS_PREFIX: LURL:=GetPodcastLogoForEpisode(LImageFile);
-          RADIOBROWSER_PREFIX: begin
-                                 LRBStation:=TRBStation.Create;
-                                 try
-                                   GetRBStationByID(LRBStation,LImageFile.Substring(3,12),GetAVRConfigIdx(AReq));
-                                   LURL:=LRBStation.RBSIcon;
-                                 finally
-                                   LRBStation.Free;
-                                 end;
-                               end;
-        end;
-        if LURL <> '' then
-          begin
-            with TFPHttpClient.Create(nil) do
-              try
-                AllowRedirect:=True;
-                ConnectTimeout:=HTTP_CLIENT_CONNECT_TIMEOUT;
-                IOTimeout:=HTTP_CLIENT_IO_TIMEOUT;
-                LHeaderAcceptStr:=HTTP_RESPONSE_CONTENT_TYPE[ctJPG];
-                {$IFDEF READERPNG}
-                LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctPNG];
+    LStream:=TMemoryStream.Create;
+    try
+      if IconCache and FileExists(CachePath+DirectorySeparator+LImageFile) then
+        begin
+          try
+            LStream.LoadFromFile(CachePath+DirectorySeparator+LImageFile);
+            if LStream.Size>0 then
+              begin
+                LGetImageFromURL:=False;
+                {$IFDEF WRITERJPG}
+                ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
+                {$ELSE}
+                {$IFDEF WRITERPNG}
+                ServerResponse(HTTP_CODE_OK,ctPNG,Res,LStream);
                 {$ENDIF}
-                {$IFDEF READERGIF}
-                LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctGIF];
                 {$ENDIF}
-                {$IFDEF READERTIFF}
-                LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctTIFF];
-                {$ENDIF}
-                AddHeader(HTTP_HEADER_ACCEPT,LHeaderAcceptStr);
-                AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
-                try
-                  Logging(ltDebug, MSG_GETTING+' '+LURL);
-                  Get(LURL,LStream);
-                except
-                  on E : Exception do
-                    begin
-                      LStream.Size:=0;
-                      Logging(ltError, 'Error getting image from: "'+LURL+'"? ('+E.Message+')');
-                    end;
-                end;
-                if LStream.Size>0 then
-                  begin
-                    LStream.Position:=0;
-                    LImageIn:=TFPMemoryImage.Create(0,0);
-                    LImageIn.UsePalette:=False;
-                    if LImageIn.FindReaderFromStream(LStream)<>nil then
-                      LImageReader:=LImageIn.FindReaderFromStream(LStream).Create;
-                  end;
-              finally
-                Free;
               end;
-            try
-              if Assigned(LImageReader) then
-                begin
-                  LStream.Position := 0;
-                  {$IFDEF WRITERJPG}
-                  LImageWriter:=TFPWriterJPEG.Create;
-                  {$ELSE}
-                  {$IFDEF WRITERPNG}
-                  LImageWriter:=TFPWriterPNG.Create;
-                  {$ENDIF}
-                  {$ENDIF}
-                  try
-                    with LImageIn do
-                      begin
-                        try
-                          LoadFromStream(LStream,LImageReader);
-// The image is decoded now, so drop the downloaded bytes before re-encoding.
-// Writing at the stream's end would otherwise leave source and converted image
-// concatenated, which is what reaches the AVR and the icon cache.
-                          LStream.Size:=0;
-                          if (Width>IconSize) or (Height>IconSize) then
-                            begin
-                              if Width>=Height then
-                                LScaleFactor:=IconSize/Width
-                              else
-                                LScaleFactor:=IconSize/Height;
-
-                              with TFPImageCanvas.Create(TFPMemoryImage.Create(Round(LImageIn.Width*LScaleFactor),Round(LImageIn.Height*LScaleFactor))) do
-                                try
-                                  Image.UsePalette:=false;
-                                  StretchDraw(0,0,Round(LImageIn.Width*LScaleFactor),Round(LImageIn.Height*LScaleFactor),LImageIn);
-                                  Image.SaveToStream(LStream,LImageWriter);
-                                finally
-                                  Image.Free;
-                                  Free;
-                                end;
-                            end
-                          else
-                            SaveToStream(LStream,LImageWriter);
-                        except
-                          on E : Exception do
-                          Logging(ltError, 'Unsupported stream with image type: "'+LURL+'"? /'+E.Message+'/');
-                        end;
-                      end;
-// A failed conversion leaves the stream empty; serving or caching that would
-// hand the AVR a 0-byte icon and poison the cache with it.
-                    if LStream.Size>0 then
-                      begin
-                        LStream.Position:=0;
-                        {$IFDEF WRITERJPG}
-                        ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
-                        {$ELSE}
-                        {$IFDEF WRITERPNG}
-                        ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
-                        {$ENDIF}
-                        {$ENDIF}
-                        if IconCache then
-                          begin
-                            if not DirectoryExists(CachePath) then CreateDir(CachePath);
-                            try
-                              LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
-                            except
-                              on E : Exception do
-                                Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
-                            end;
-                          end;
-                      end;
-                  finally
-                    FreeAndNil(LImageWriter);
-                  end;
-                end
-              else
-                Logging(ltError, 'Unsupported image type: "'+LURL+'"');
-            finally
-              if Assigned(LImageIn) then
-                FreeAndNil(LImageIn);
-              if Assigned(LImageReader) then
-                FreeAndNil(LImageReader);
-            end;
+          except
+            on E : Exception do
+              Logging(ltError, LImageFile+MSG_FILE_LOAD_ERROR+' ('+E.Message+')');
           end;
-      end;
-  finally
-    FreeAndNil(LStream);
+        end;
+      if LGetImageFromURL then
+        begin
+          case LImageFile.Substring(0,2) of
+            MY_STATIONS_PREFIX: LURL:=GetMyStationByID(LImageFile).Station.MSLogoURL;
+            PODCASTS_PREFIX: LURL:=GetPodcastLogoForEpisode(LImageFile);
+            RADIOBROWSER_PREFIX: begin
+                                   LRBStation:=TRBStation.Create;
+                                   try
+                                     GetRBStationByID(LRBStation,LImageFile.Substring(3,12),GetAVRConfigIdx(AReq));
+                                     LURL:=LRBStation.RBSIcon;
+                                   finally
+                                     LRBStation.Free;
+                                   end;
+                                 end;
+          end;
+          if LURL <> '' then
+            begin
+  // TLocalHttpClient hangs up once the body passes its ceiling. Without one, the
+  // only limit on what a logo URL could stream into memory was the sender's
+  // patience.
+              with TLocalHttpClient.Create(ICON_MAX_BYTES) do
+                try
+                  AllowRedirect:=True;
+                  LHeaderAcceptStr:=HTTP_RESPONSE_CONTENT_TYPE[ctJPG];
+                  {$IFDEF READERPNG}
+                  LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctPNG];
+                  {$ENDIF}
+                  {$IFDEF READERGIF}
+                  LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctGIF];
+                  {$ENDIF}
+                  {$IFDEF READERTIFF}
+                  LHeaderAcceptStr:=LHeaderAcceptStr+','+HTTP_RESPONSE_CONTENT_TYPE[ctTIFF];
+                  {$ENDIF}
+                  AddHeader(HTTP_HEADER_ACCEPT,LHeaderAcceptStr);
+                  AddHeader(HTTP_HEADER_USER_AGENT,RETUNER_USER_AGENT+'/'+APP_VERSION);
+                  try
+                    Logging(ltDebug, MSG_GETTING+' '+LURL);
+                    Get(LURL,LStream);
+                  except
+                    on E : Exception do
+                      begin
+                        LStream.Size:=0;
+                        Logging(ltError, 'Error getting image from: "'+LURL+'"? ('+E.Message+')');
+                      end;
+                  end;
+                  if LStream.Size>0 then
+                    begin
+                      LStream.Position:=0;
+                      LImageIn:=TCappedImage.Create(0,0);
+                      LImageIn.UsePalette:=False;
+                      if LImageIn.FindReaderFromStream(LStream)<>nil then
+                        LImageReader:=LImageIn.FindReaderFromStream(LStream).Create;
+                    end;
+                finally
+                  Free;
+                end;
+              try
+                if Assigned(LImageReader) then
+                  begin
+                    LStream.Position := 0;
+                    {$IFDEF WRITERJPG}
+                    LImageWriter:=TFPWriterJPEG.Create;
+                    {$ELSE}
+                    {$IFDEF WRITERPNG}
+                    LImageWriter:=TFPWriterPNG.Create;
+                    {$ENDIF}
+                    {$ENDIF}
+                    try
+                      with LImageIn do
+                        begin
+                          try
+                            LoadFromStream(LStream,LImageReader);
+  // The image is decoded now, so drop the downloaded bytes before re-encoding.
+  // Writing at the stream's end would otherwise leave source and converted image
+  // concatenated, which is what reaches the AVR and the icon cache.
+                            LStream.Size:=0;
+                            if (Width>IconSize) or (Height>IconSize) then
+                              begin
+                                if Width>=Height then
+                                  LScaleFactor:=IconSize/Width
+                                else
+                                  LScaleFactor:=IconSize/Height;
+  // A 3000x2 banner scaled to fit 200 pixels rounds its height to zero, and the
+  // JPEG writer given an image with no height printed "Empty JPEG image (DNL not
+  // supported)" and took the process down with an access violation - from a
+  // station logo, over the network. A side is at least one pixel.
+                                LNewWidth:=Max(1,Round(LImageIn.Width*LScaleFactor));
+                                LNewHeight:=Max(1,Round(LImageIn.Height*LScaleFactor));
+
+                                with TFPImageCanvas.Create(TFPMemoryImage.Create(LNewWidth,LNewHeight)) do
+                                  try
+                                    Image.UsePalette:=false;
+                                    StretchDraw(0,0,LNewWidth,LNewHeight,LImageIn);
+                                    Image.SaveToStream(LStream,LImageWriter);
+                                  finally
+                                    Image.Free;
+                                    Free;
+                                  end;
+                              end
+                            else
+                              SaveToStream(LStream,LImageWriter);
+                          except
+                            on E : Exception do
+                            Logging(ltError, 'Unsupported stream with image type: "'+LURL+'"? /'+E.Message+'/');
+                          end;
+                        end;
+  // A failed conversion leaves the stream empty; serving or caching that would
+  // hand the AVR a 0-byte icon and poison the cache with it.
+                      if LStream.Size>0 then
+                        begin
+                          LStream.Position:=0;
+                          {$IFDEF WRITERJPG}
+                          ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LStream);
+                          {$ELSE}
+                          {$IFDEF WRITERPNG}
+                          ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LStream);
+                          {$ENDIF}
+                          {$ENDIF}
+                          if IconCache then
+                            begin
+                              if not DirectoryExists(CachePath) then CreateDir(CachePath);
+                              try
+                                LStream.SaveToFile(CachePath+DirectorySeparator+LImageFile);
+                              except
+                                on E : Exception do
+                                  Logging(ltError, LImageFile+MSG_FILE_SAVE_ERROR+' ('+E.Message+')');
+                              end;
+                            end;
+                        end;
+                    finally
+                      FreeAndNil(LImageWriter);
+                    end;
+                  end
+                else
+                  Logging(ltError, 'Unsupported image type: "'+LURL+'"');
+              finally
+                if Assigned(LImageIn) then
+                  FreeAndNil(LImageIn);
+                if Assigned(LImageReader) then
+                  FreeAndNil(LImageReader);
+              end;
+            end;
+        end;
+    finally
+      FreeAndNil(LStream);
+    end;
+  except
+    on E: Exception do
+      Logging(ltError, 'Icon request aborted: '+E.ClassName+' ('+E.Message+')');
   end;
   if not ARes.ContentSent then
     begin

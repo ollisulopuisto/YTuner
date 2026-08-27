@@ -56,10 +56,17 @@ it:
     ./script/test-presets.sh        fetch, validate, cache, merge, fallbacks
     ./script/test-radiobrowser.sh   filtering, and awkward upstream responses
     ./script/test-leaks.sh          whether the heap grows with load (needs CHECKED=1)
+    ./script/fuzz-test.sh           malformed DNS packets, hostile logos, ids that are not ids
 
 Each takes a binary path as `$1` and needs no network — mocks stand in for
 radio-browser and the preset repository. That makes them an implementation-
 independent spec: they would run against a rewrite in another language as-is.
+
+`fuzz-test.sh` is worth running against a `CHECKED=1` build, where `-Cr` turns a
+read past the end of a buffer into a reported error instead of a plausible
+number. Two of its assertions exist because the thing they check was not true:
+an icon id of `../secret.txt` returned that file, and a 3000x2 logo scaled to a
+200-pixel icon rounded its height to zero and took the process down.
 
 **Give every test phase its own ports, and pass them in as arguments.** Sharing
 them lets a mock that failed to bind leave the previous phase's server
@@ -71,6 +78,12 @@ identical figure at both loads and the check passed it. Take the ports as
 parameters and the whole class of bug goes away.
 
 ## Things that look safe and are not
+
+**Anything a station directory hands you is attacker input.** A logo URL is
+chosen by whoever submitted the station, and it is fetched and decoded in this
+process. Headers are claims: cap what a decoder may allocate before it allocates
+it, in `SetSize`, which is the one point every format's reader goes through. And
+an id in a query string is not a file name - `GetIcon` used it as one.
 
 **Strings written into files outlive the code.** `/ytuner/` URLs live in
 bookmarks an AVR saved years ago and replays verbatim; `ytunerhost` is the
