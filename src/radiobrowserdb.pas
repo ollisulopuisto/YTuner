@@ -13,7 +13,7 @@ unit radiobrowserdb;
 interface
 
 uses
-  Classes, StrUtils, SysUtils,
+  Classes, StrUtils, SysUtils, syncobjs,
   SQLDB, SQLite3Conn, SQLite3, SQLite3Backup,
   radiobrowser;
 
@@ -116,6 +116,11 @@ function DBRBGetRootItems(var ARootCategoryTypesCount: TRBRootCategoryTypesCount
 var
   DBRBMainConnection: TSQLite3Connection = nil;
   RBDBCreationDateTime: TDateTime = 0;
+// SQLdb connections are not thread safe, and the whole threaded web server
+// shares this one. Queries are serialised on this lock, as is the moment the
+// TTL refresh swaps the connection out -- that used to free a connection other
+// request threads were still querying.
+  DBRBLock: TCriticalSection;
 
 implementation
 
@@ -300,29 +305,34 @@ var
   function MainRBDBConnect: boolean;
   begin
     Result:=False;
-    if Assigned(DBRBMainConnection) then
-      begin
-        DBRBMainConnection.Connected:=False;
-        if not DBRBMainConnection.Connected then
-          FreeAndNil(DBRBMainConnection)
-        else
-          begin
-            Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%}+':',MSG_RBDB_CANNOT, MSG_RBDB_DISCONNECT, MSG_RBDB_DB]));
-            Exit;
-          end;
-      end;
-    DBRBMainConnection:=LRBDBConnection;
-    if not DBRBMainConnection.Connected then
-      try
-        DBRBMainConnection.Connected:=True;
-      except
-        on E: Exception do
-          begin
-            Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%}+':',MSG_RBDB_ERROR, MSG_RBDB_CONNECTION,' ('+E.Message+')']));
-            Exit;
-          end;
-      end;
-    Result:=DBRBMainConnection.Connected;
+    DBRBLock.Enter;
+    try
+      if Assigned(DBRBMainConnection) then
+        begin
+          DBRBMainConnection.Connected:=False;
+          if not DBRBMainConnection.Connected then
+            FreeAndNil(DBRBMainConnection)
+          else
+            begin
+              Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%}+':',MSG_RBDB_CANNOT, MSG_RBDB_DISCONNECT, MSG_RBDB_DB]));
+              Exit;
+            end;
+        end;
+      DBRBMainConnection:=LRBDBConnection;
+      if not DBRBMainConnection.Connected then
+        try
+          DBRBMainConnection.Connected:=True;
+        except
+          on E: Exception do
+            begin
+              Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%}+':',MSG_RBDB_ERROR, MSG_RBDB_CONNECTION,' ('+E.Message+')']));
+              Exit;
+            end;
+        end;
+      Result:=DBRBMainConnection.Connected;
+    finally
+      DBRBLock.Leave;
+    end;
   end;
 
   function CheckAndPrepareDBConnection: boolean;
@@ -495,6 +505,10 @@ begin
           end;
         if LDBReady then
           begin
+// Publishing the rebuilt database disconnects and replaces the connection other
+// request threads are querying, so the whole swap is serialised.
+            DBRBLock.Enter;
+            try
             case RBCacheType of
               catDB :
                 begin
@@ -554,6 +568,9 @@ begin
             Result:=MainRBDBConnect;
             if Result then
               RBDBCreationDateTime:=Now;
+            finally
+              DBRBLock.Leave;
+            end;
           end;
       end;
   finally
@@ -663,7 +680,7 @@ begin
     end;
 end;
 
-function DBRBCheckAVRView(AAVRConfigIdx: integer): boolean;
+function DBRBCheckAVRViewUnlocked(AAVRConfigIdx: integer): boolean;
 var
   LView: string;
   LSQLTransaction: TSQLTransaction;
@@ -704,7 +721,7 @@ begin
     end;
 end;
 
-function DBRBGetCategoryItems(var ARBCategories: TRBCategories; ARBCategoryType: TRBCategoryTypes; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+function DBRBGetCategoryItemsUnlocked(var ARBCategories: TRBCategories; ARBCategoryType: TRBCategoryTypes; AAVRConfigIdx, AStart, AHowMany: integer): integer;
 var
   LRBCategory: TRBCategory;
   LSQLTransaction: TSQLTransaction;
@@ -749,7 +766,7 @@ begin
     end;
 end;
 
-function DBRBGetStationsByCategory(var ARBStations: TRBStations; ARBAllCategoryType: TRBAllCategoryTypes; AName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+function DBRBGetStationsByCategoryUnlocked(var ARBStations: TRBStations; ARBAllCategoryType: TRBAllCategoryTypes; AName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
 var
   LRBStation: TRBStation;
   LSQLTransaction: TSQLTransaction;
@@ -822,7 +839,7 @@ begin
     end;
 end;
 
-function DBRBGetStationByID(var ARBStation: TRBStation; AID: string; AAVRConfigIdx: integer): integer;
+function DBRBGetStationByIDUnlocked(var ARBStation: TRBStation; AID: string; AAVRConfigIdx: integer): integer;
 var
   LSQLTransaction: TSQLTransaction;
 begin
@@ -868,7 +885,7 @@ begin
     end;
 end;
 
-function DBRBGetRootItems(var ARootCategoryTypesCount: TRBRootCategoryTypesCount; AAVRConfigIdx: integer): integer;
+function DBRBGetRootItemsUnlocked(var ARootCategoryTypesCount: TRBRootCategoryTypesCount; AAVRConfigIdx: integer): integer;
 var
   LSQLTransaction: TSQLTransaction;
 begin
@@ -903,6 +920,65 @@ begin
       LSQLTransaction.Free;
     end;
 end;
+
+// Serialised entry points. The lock covers query execution and the connection
+// swap only; building a replacement database in DBRBPrepare runs outside it so
+// a TTL refresh does not block browsing for the minutes that takes.
+function DBRBCheckAVRView(AAVRConfigIdx: integer): boolean;
+begin
+  DBRBLock.Enter;
+  try
+    Result:=DBRBCheckAVRViewUnlocked(AAVRConfigIdx);
+  finally
+    DBRBLock.Leave;
+  end;
+end;
+
+function DBRBGetCategoryItems(var ARBCategories: TRBCategories; ARBCategoryType: TRBCategoryTypes; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+begin
+  DBRBLock.Enter;
+  try
+    Result:=DBRBGetCategoryItemsUnlocked(ARBCategories,ARBCategoryType,AAVRConfigIdx,AStart,AHowMany);
+  finally
+    DBRBLock.Leave;
+  end;
+end;
+
+function DBRBGetStationsByCategory(var ARBStations: TRBStations; ARBAllCategoryType: TRBAllCategoryTypes; AName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+begin
+  DBRBLock.Enter;
+  try
+    Result:=DBRBGetStationsByCategoryUnlocked(ARBStations,ARBAllCategoryType,AName,AAVRConfigIdx,AStart,AHowMany);
+  finally
+    DBRBLock.Leave;
+  end;
+end;
+
+function DBRBGetStationByID(var ARBStation: TRBStation; AID: string; AAVRConfigIdx: integer): integer;
+begin
+  DBRBLock.Enter;
+  try
+    Result:=DBRBGetStationByIDUnlocked(ARBStation,AID,AAVRConfigIdx);
+  finally
+    DBRBLock.Leave;
+  end;
+end;
+
+function DBRBGetRootItems(var ARootCategoryTypesCount: TRBRootCategoryTypesCount; AAVRConfigIdx: integer): integer;
+begin
+  DBRBLock.Enter;
+  try
+    Result:=DBRBGetRootItemsUnlocked(ARootCategoryTypesCount,AAVRConfigIdx);
+  finally
+    DBRBLock.Leave;
+  end;
+end;
+
+initialization
+  DBRBLock:=TCriticalSection.Create;
+
+finalization
+  DBRBLock.Free;
 
 end.
 

@@ -7,7 +7,7 @@ unit radiobrowser;
 interface
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, syncobjs,
   fpjson, jsonparser,
   fphttpclient, httpprotocol, httpdefs,
   RegExpr, StrUtils, DateUtils, FileUtil,
@@ -107,6 +107,10 @@ var
   RBCacheType: TCacheType = catFile;
   RBStationsUUIDs: string = '';
   RBCache: TRBCache;
+// The web server is threaded, so RBCache is reached from several request
+// threads at once. Every entry point below is serialised on this lock: one
+// handler used to be able to delete an entry while another was iterating.
+  RBCacheLock: TCriticalSection;
 
 function GetAPIURLRange(AElementNumber,AElementCount: integer): string;
 function RadiobrowserAPIRequest(AURL: string): RawByteString;
@@ -687,7 +691,7 @@ begin
     end;
 end;
 
-function GetRBCache(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+function GetRBCacheUnlocked(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -731,7 +735,17 @@ begin
     end;
 end;
 
-function SetRBCache(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
+function GetRBCache(var ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx, AStart, AHowMany: integer): integer;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=GetRBCacheUnlocked(ARBObjectsList,ACacheName,AAVRConfigIdx,AStart,AHowMany);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function SetRBCacheUnlocked(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -794,7 +808,17 @@ begin
     Logging(ltError, string.Join(' ',[{$I %CURRENTROUTINE%},MSG_EMPTY,MSG_OBJECTS,ACacheName]));
 end;
 
-function GetRBStationCache(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
+function SetRBCache(ARBObjectsList: TRBObjectsList; ACacheName: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=SetRBCacheUnlocked(ARBObjectsList,ACacheName,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function GetRBStationCacheUnlocked(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheName, LCacheFileName: string;
@@ -856,7 +880,17 @@ begin
     end;
 end;
 
-function RemoveEmptyCategory(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
+function GetRBStationCache(var ARBStation: TRBStation; AUUID: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=GetRBStationCacheUnlocked(ARBStation,AUUID,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
+end;
+
+function RemoveEmptyCategoryUnlocked(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
 var
   LCacheIdx: integer;
   LCacheFileName: string;
@@ -917,6 +951,16 @@ begin
                     end;
                   end;
     end;
+end;
+
+function RemoveEmptyCategory(ARBAllCategoryType: TRBAllCategoryTypes; ACacheName,AName: string; AAVRConfigIdx: integer):boolean;
+begin
+  RBCacheLock.Enter;
+  try
+    Result:=RemoveEmptyCategoryUnlocked(ARBAllCategoryType,ACacheName,AName,AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
 end;
 
 function LoadRBObjects(ARBObjectsList: TRBObjectsList; AFileName: string; AStart, AHowMany: integer; AObjectName: string = ''): integer;
@@ -1197,7 +1241,7 @@ begin
   end;
 end;
 
-procedure LoadRBCacheFilesInfo(AAVRConfigIdx: integer);
+procedure LoadRBCacheFilesInfoUnlocked(AAVRConfigIdx: integer);
 var
   LCacheFile: string;
   LCacheFiles: TStringList;
@@ -1217,6 +1261,16 @@ begin
     LCacheFiles.free;
   end;
 
+end;
+
+procedure LoadRBCacheFilesInfo(AAVRConfigIdx: integer);
+begin
+  RBCacheLock.Enter;
+  try
+    LoadRBCacheFilesInfoUnlocked(AAVRConfigIdx);
+  finally
+    RBCacheLock.Leave;
+  end;
 end;
 
 procedure RemoveOldRBCacheFiles;
@@ -1243,9 +1297,13 @@ begin
   end;
 end;
 
+initialization
+  RBCacheLock:=TCriticalSection.Create;
+
 finalization
   if (RBCacheType<>catNone) and Assigned(RBCache) then
     RBCache.Free;
+  RBCacheLock.Free;
 
 end.
 

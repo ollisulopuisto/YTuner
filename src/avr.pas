@@ -7,7 +7,7 @@ unit avr;
 interface
 
 uses
-  Classes, SysUtils, IniFiles, StrUtils, HTTPDefs, common, httproute;
+  Classes, SysUtils, IniFiles, StrUtils, syncobjs, HTTPDefs, common, httproute;
 
 type
   TRBFilter = record
@@ -94,6 +94,10 @@ const
 var
   AVRMACsArray: array of string;
   AVRConfigArray: TAVRConfigArray;
+// Registering a newly seen AVR grows both arrays from a request thread. Two
+// devices appearing at once used to be able to interleave their SetLength calls
+// and corrupt each other's entry.
+  AVRConfigLock: TCriticalSection;
   CommonAVRini: boolean = True;
 
 function StripHttps(AURL: string; AReq: TRequest):string;
@@ -137,19 +141,29 @@ begin
           Result:=IndexStr(LAVRMAC,AVRMACsArray);
           if Result<0 then
             begin
-              Logging(ltInfo, 'New AVR connected ('+LAVRMAC+')');
-              if not FileExists(ConfigPath+DirectorySeparator+LAVRMAC+'.ini') then
-                Logging(ltInfo, 'Preparing new config ini file ('+LAVRMAC+'.ini)..');
+              AVRConfigLock.Enter;
               try
-                Result:=ReadAVRINIConfiguration(LAVRMAC);
-                if Result>0 then
-                  case RBCacheType of
-                    catFile: LoadRBCacheFilesInfo(Result);
-                    catDB, catMemDB, catPermMemDB: DBRBCheckAVRView(Result);
+// Another request thread may have registered this AVR while we waited.
+                Result:=IndexStr(LAVRMAC,AVRMACsArray);
+                if Result<0 then
+                  begin
+                    Logging(ltInfo, 'New AVR connected ('+LAVRMAC+')');
+                    if not FileExists(ConfigPath+DirectorySeparator+LAVRMAC+'.ini') then
+                      Logging(ltInfo, 'Preparing new config ini file ('+LAVRMAC+'.ini)..');
+                    try
+                      Result:=ReadAVRINIConfiguration(LAVRMAC);
+                      if Result>0 then
+                        case RBCacheType of
+                          catFile: LoadRBCacheFilesInfo(Result);
+                          catDB, catMemDB, catPermMemDB: DBRBCheckAVRView(Result);
+                        end;
+                    finally
+                      if Result<0 then                         //INI error.
+                        Result:=0;                             //Default AVR config.
+                    end;
                   end;
               finally
-                if Result<0 then                               //INI error.
-                  Result:=0;                                   //Default AVR config.
+                AVRConfigLock.Leave;
               end;
             end;
         end;
@@ -274,6 +288,12 @@ begin
         LoadTranslator(Result,AAVRMAC);
     end;
 end;
+
+initialization
+  AVRConfigLock:=TCriticalSection.Create;
+
+finalization
+  AVRConfigLock.Free;
 
 end.
 
