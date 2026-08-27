@@ -27,6 +27,12 @@ jobs:
             target: aarch64-darwin
           - os: macos-13
             target: x86_64-darwin
+          - os: windows-latest
+            target: x86_64-win64
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - uses: actions/checkout@v4
 
@@ -45,8 +51,32 @@ jobs:
       # Debian packages the LazUtils sources; nobody else does. A sparse
       # checkout takes the two directories the build needs without the rest of
       # Lazarus, which is a large repository to clone for four units.
-      - name: LazUtils sources (macOS)
-        if: runner.os == 'macOS'
+      # Chocolatey's package installs the compiler; where it puts it is what the
+      # next step reports, because that is the sort of thing a runner image
+      # changes without telling anyone.
+      - name: Install the compiler (Windows)
+        if: runner.os == 'Windows'
+        run: choco install freepascal --no-progress -y
+
+      - name: Find the compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $roots = 'C:\FPC', 'C:\tools', 'C:\ProgramData\chocolatey\lib',
+                   'C:\Program Files', 'C:\Program Files (x86)'
+          $fpc = $null
+          foreach ($r in $roots) {
+            if (-not (Test-Path $r)) { continue }
+            $fpc = Get-ChildItem -Path $r -Filter fpc.exe -Recurse -Depth 6 `
+                     -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($fpc) { break }
+          }
+          if (-not $fpc) { throw "fpc.exe not found after install" }
+          Write-Host "found: $($fpc.FullName)"
+          Add-Content -Path $env:GITHUB_PATH -Value $fpc.DirectoryName
+
+      - name: LazUtils sources (macOS and Windows)
+        if: runner.os != 'Linux'
         run: |
           git clone --depth 1 --filter=blob:none --sparse \
             https://gitlab.com/freepascal.org/lazarus/lazarus.git "$RUNNER_TEMP/lazarus"
@@ -70,8 +100,41 @@ jobs:
       # The point of building on the platform's own runner is that the result
       # is then known to work there, not merely to have compiled. This is the
       # same suite the Linux job has always run.
+      # The suites start the binary and speak HTTP to it. That has never been
+      # tried under Git Bash, so the Windows job proves the build and leaves
+      # running it to the platforms where the suite is known to work.
       - name: Smoke test
+        if: runner.os != 'Windows'
         run: ./script/smoke-test.sh
+
+      # A release build has no line information, so a crash reports addresses and
+      # nothing else. When the suite fails, rebuild with it and run the binary
+      # by hand: the backtrace is the whole point of having a runner for a
+      # platform none of us can reproduce locally.
+      - name: Backtrace
+        if: failure()
+        run: |
+          DEBUG=1 ./script/build.sh
+          work=$(mktemp -d)
+          cp bin/*/retuner "$work/"
+          cat > "$work/retuner.ini" <<'INI'
+          [Configuration]
+          INIVersion=1.2.2
+          MessageInfoLevel=4
+          IPAddress=127.0.0.1
+          [WebServer]
+          WebServerIPAddress=127.0.0.1
+          WebServerPort=18999
+          [DNSServer]
+          Enable=0
+          [RadioBrowser]
+          Enable=0
+          [MyStations]
+          Enable=0
+          INI
+          sed -i.bak 's/^          //' "$work/retuner.ini"
+          cat "$work/retuner.ini"
+          ( cd "$work" && ./retuner ) || true
 
       - name: Package
         id: package
@@ -80,7 +143,11 @@ jobs:
           target=${{ matrix.target }}
           stage="retuner-$version-$target"
           mkdir -p "$stage/config"
-          cp "bin/$target/retuner" "$stage/"
+          if [ "${RUNNER_OS}" = Windows ]; then
+            cp "bin/$target/retuner.exe" "$stage/"
+          else
+            cp "bin/$target/retuner" "$stage/"
+          fi
           cp cfg/retuner.ini "$stage/"
           cp cfg/avr.ini cfg/stations.ini cfg/podcasts.ini "$stage/config/"
           cp LICENSE.txt README.md "$stage/"

@@ -57,6 +57,13 @@ OUT_OS=$(fpc -iTO)
 BUILD_DIR=$ROOT/.build/$OUT_CPU-$OUT_OS
 mkdir -p "$BUILD_DIR/units"
 
+# Windows has the real windres, and an .exe suffix to go with it. Everything
+# below that differs between the two lives here rather than in the fpc line.
+case "$OUT_OS" in
+  win32|win64) RESOURCE_FLAG=""; EXE_SUFFIX=".exe" ;;
+  *)           RESOURCE_FLAG="-FC$BUILD_DIR/windres"; EXE_SUFFIX="" ;;
+esac
+
 SHIM=$BUILD_DIR/windres
 cat > "$SHIM" <<'SHIM_EOF'
 #!/bin/sh
@@ -102,13 +109,13 @@ else
 fi
 
 # shellcheck disable=SC2086
-fpc -MObjFPC -Scghi $OPTS -vew -FC"$SHIM" \
+fpc -MObjFPC -Scghi $OPTS -vew $RESOURCE_FLAG \
   -Fu"$LAZUTILS_DIR" \
   -Fu"$INDY_DIR/Core" -Fu"$INDY_DIR/System" -Fu"$INDY_DIR/Protocols" \
   -Fi"$INDY_DIR/Core" -Fi"$INDY_DIR/System" -Fi"$INDY_DIR/Protocols" \
   -Fu"$ROOT/src" \
   -FU"$BUILD_DIR/units" \
-  -o"$TARGET_DIR/retuner" \
+  -o"$TARGET_DIR/retuner$EXE_SUFFIX" \
   "$ROOT/src/retuner.pas"
 
-echo "Built $TARGET_DIR/retuner"
+echo "Built $TARGET_DIR/retuner$EXE_SUFFIX"
