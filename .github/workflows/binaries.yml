@@ -187,11 +187,9 @@ jobs:
       # Chocolatey's Windows package is the 32-bit compiler, so this job builds
       # i386-win32 and says so rather than mislabelling it x86_64.
       - name: Report the toolchain
-        id: toolchain
         run: |
           fpc -iV
-          echo "target=$(fpc -iTP)-$(fpc -iTO)" >> "$GITHUB_OUTPUT"
-          echo "target: $(fpc -iTP)-$(fpc -iTO)"
+          echo "default target: $(fpc -iTP)-$(fpc -iTO)"
 
       - name: Build
         run: ./script/build.sh
@@ -257,7 +255,12 @@ jobs:
         id: package
         run: |
           version=$(sed -n "s/^ *APP_VERSION *= *'\(.*\)';.*/\1/p" src/common.pas)
-          target=${{ steps.toolchain.outputs.target }}
+          # Ask the compiler with the same flags the build used. Taking this
+          # from the earlier report step meant reading it before FPC_FLAGS was
+          # decided, so a job that had just built x86_64-win64 went looking in
+          # bin/i386-win32 for it.
+          target=$(fpc $FPC_FLAGS -iTP)-$(fpc $FPC_FLAGS -iTO)
+          echo "packaging $target"
           stage="retuner-$version-$target"
           mkdir -p "$stage/config"
           if [ "${RUNNER_OS}" = Windows ]; then
