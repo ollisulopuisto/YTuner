@@ -105,21 +105,42 @@ jobs:
       - name: Check the built image carries a runnable binary
         run: |
           docker run --rm --entrypoint /bin/sh retuner-addon:test -c '
-            set -e
-            test -x /opt/retuner/ytuner
-            test -f /opt/retuner/cfg/stations.ini
-            test -x /etc/s6-overlay/s6-rc.d/retuner/run
-            grep -qx longrun /etc/s6-overlay/s6-rc.d/retuner/type
+            echo "--- /opt/retuner"
+            ls -la /opt/retuner /opt/retuner/cfg 2>&1 | head -40
+            echo "--- /etc/s6-overlay/s6-rc.d"
+            ls -la /etc/s6-overlay/s6-rc.d 2>&1 | head -40
+            find /etc/s6-overlay/s6-rc.d -maxdepth 3 \( -path "*retuner*" -o -name contents.d \) -exec ls -ld {} + 2>&1
+            echo "--- checks"
+            rc=0
+            check() {
+              if eval "$2" >/dev/null 2>&1; then
+                echo "ok   $1"
+              else
+                echo "FAIL $1"
+                rc=1
+              fi
+            }
+            check "the binary is present and executable" \
+              "test -x /opt/retuner/ytuner"
+            check "the bundled station list came across" \
+              "test -f /opt/retuner/cfg/stations.ini"
+            check "the s6 run script is executable" \
+              "test -x /etc/s6-overlay/s6-rc.d/retuner/run"
+            check "the service is declared longrun" \
+              "grep -qx longrun /etc/s6-overlay/s6-rc.d/retuner/type"
             # ordering, not just presence: without this the service is started
-            # in s6's first wave, before the container is wired up
-            test -f /etc/s6-overlay/s6-rc.d/retuner/dependencies.d/base
-            test -f /etc/s6-overlay/s6-rc.d/user/contents.d/retuner
-            test -f /usr/bin/merge-ini.awk
-            command -v awk >/dev/null
-            ldd /opt/retuner/ytuner
-            if ldd /opt/retuner/ytuner | grep -q "not found"; then
-              echo "a shared library is missing from the image"
-              exit 1
-            fi
+            # in s6 first wave, before the container is wired up
+            check "the service is ordered after the base bundle" \
+              "test -f /etc/s6-overlay/s6-rc.d/retuner/dependencies.d/base"
+            check "the service is registered under user/contents.d" \
+              "test -f /etc/s6-overlay/s6-rc.d/user/contents.d/retuner"
+            check "the ini merge script came across" \
+              "test -f /usr/bin/merge-ini.awk"
+            check "awk is installed" "command -v awk"
+            echo "--- ldd"
+            ldd /opt/retuner/ytuner || true
+            check "no shared library is missing" \
+              "! ldd /opt/retuner/ytuner | grep -q \"not found\""
+            test "$rc" -eq 0 || { echo "add-on image is not right; see FAIL above"; exit 1; }
             echo "add-on image ok"
           '
