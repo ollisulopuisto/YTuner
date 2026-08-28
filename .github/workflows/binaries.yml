@@ -263,6 +263,7 @@ jobs:
           ./script/test-presets.sh
           ./script/test-radiobrowser.sh
           ./script/test-preset-strikes.sh
+          ./script/test-preset-icons.sh
           ./script/fuzz-test.sh
 
       # FPC's own backtrace on Darwin prints addresses and no lines, so this asks

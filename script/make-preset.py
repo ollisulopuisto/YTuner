@@ -23,13 +23,25 @@ import json
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 from collections import OrderedDict
 
 API = "https://all.api.radio-browser.info"
 UA = "Retuner-preset-builder/1.0 (+https://github.com/ollisulopuisto/retuner)"
 AUDIO_TYPES = ("audio/", "application/ogg", "application/octet-stream")
 PLAYLIST_EXT = (".m3u", ".m3u8", ".pls", ".asx")
+
+# A station logo is fetched from a site the station chose, so both bounds are
+# on us: how much of a page to read looking for a link, and how much of what it
+# points at to accept as an icon. The receiver scales everything to IconSize
+# anyway -- 96 or 200 pixels -- so a megabyte is already far more than can be
+# useful, and four megabytes is somebody else's problem arriving as ours.
+PAGE_MAX_BYTES = 256 * 1024
+ICON_MAX_BYTES = 1024 * 1024
+ICON_RELS = ("apple-touch-icon", "apple-touch-icon-precomposed",
+             "shortcut icon", "icon")
 
 
 def get(url, timeout=20):
@@ -38,8 +50,8 @@ def get(url, timeout=20):
         return r.read()
 
 
-def candidates(country, limit):
-    url = (f"{API}/json/stations/bycountrycodeexact/{country.upper()}"
+def candidates(country, limit, api=None):
+    url = (f"{api or API}/json/stations/bycountrycodeexact/{country.upper()}"
            f"?limit={limit}&order=clickcount&reverse=true&hidebroken=true")
     try:
         return json.loads(get(url))
@@ -114,8 +126,113 @@ def safe_url(text):
     return url
 
 
+class IconLinks(HTMLParser):
+    """Collects <link rel=...icon...> hrefs, in the order the page gives them.
+
+    A parser rather than a regular expression: the attribute order is not
+    fixed, the quoting is not fixed, and a page that fails to parse is a page
+    we simply learn nothing from -- which is the right outcome anyway.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "link":
+            return
+        a = {k.lower(): (v or "") for k, v in attrs}
+        rel = " ".join(a.get("rel", "").lower().split())
+        if "icon" not in rel or not a.get("href"):
+            return
+        self.found.append((rel, a["href"], a.get("sizes", "")))
+
+
+def ranked_icons(html):
+    """Best first. An apple-touch-icon is a deliberate, reasonably sized logo;
+    a favicon is often 16 pixels of nothing, which the receiver then scales up
+    to 200 and shows as a smear."""
+    parser = IconLinks()
+    try:
+        parser.feed(html)
+    except Exception:
+        return []
+
+    def rank(item):
+        rel, _, sizes = item
+        for i, known in enumerate(ICON_RELS):
+            if rel == known or rel.startswith(known + " ") or (" " + known) in rel:
+                return i
+        return len(ICON_RELS)
+
+    return [href for _, href, _ in sorted(parser.found, key=rank)]
+
+
+def fetch_bounded(url, limit, timeout):
+    """Returns (content-type, body) with the body capped, or (None, None).
+
+    The cap is checked twice on purpose: Content-Length is a claim, and a
+    server that does not send one, or sends a false one, must not be able to
+    make this read four megabytes because it said it would send forty.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            declared = r.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > limit:
+                return None, None
+            body = r.read(limit + 1)
+            if len(body) > limit:
+                return None, None
+            return (r.headers.get("Content-Type") or "").lower(), body
+    except Exception:
+        return None, None
+
+
+def is_image(url, timeout):
+    ctype, body = fetch_bounded(url, ICON_MAX_BYTES, timeout)
+    if not body:                       # a 200 with no body is not an icon
+        return False
+    return ctype.startswith("image/")
+
+
+def scrape_icon(homepage, timeout):
+    """The station's own site, asked where its icon is. '' if it will not say.
+
+    Most radio-browser entries carry no favicon, so without this most generated
+    presets have no logos at all and every station on the receiver shows the
+    same placeholder.
+    """
+    homepage = (homepage or "").strip()
+    if not homepage.startswith(("http://", "https://")):
+        return ""
+
+    ctype, body = fetch_bounded(homepage, PAGE_MAX_BYTES, timeout)
+    candidates = []
+    if body and "html" in (ctype or ""):
+        html = body.decode("utf-8", "replace")
+        candidates = [urllib.parse.urljoin(homepage, h) for h in ranked_icons(html)]
+
+    # Every site is asked for /favicon.ico in the end, link or no link: it is
+    # where a browser looks, so it is where a station that never thought about
+    # this still has one.
+    root = urllib.parse.urlsplit(homepage)
+    candidates.append(urllib.parse.urlunsplit((root.scheme, root.netloc,
+                                               "/favicon.ico", "", "")))
+
+    seen = set()
+    for candidate in candidates:
+        url = safe_url(candidate)
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        if is_image(url, timeout):
+            return url
+    return ""
+
+
 def build(args):
-    rows = candidates(args.country, args.candidates)
+    rows = candidates(args.country, args.candidates, args.api)
     print(f"{len(rows)} candidates for {args.country.upper()}", file=sys.stderr)
     groups, seen, dropped = OrderedDict(), set(), 0
     for s in rows:
@@ -134,7 +251,12 @@ def build(args):
                 continue
             url = live
         seen.add(name.lower())
-        groups.setdefault(cat, []).append((name, url, safe_url(s.get("favicon"))))
+        logo = safe_url(s.get("favicon"))
+        if not logo and args.icons:
+            logo = scrape_icon(s.get("homepage"), args.timeout)
+            if logo:
+                print(f"  logo  {name}: {logo}", file=sys.stderr)
+        groups.setdefault(cat, []).append((name, url, logo))
     write(args.out, args.country, groups)
     kept = sum(len(v) for v in groups.values())
     print(f"wrote {args.out}: {kept} stations in {len(groups)} categories"
@@ -257,6 +379,10 @@ def main():
     p.add_argument("--timeout", type=int, default=12, help="seconds per stream check (default 12)")
     p.add_argument("--no-verify", dest="verify", action="store_false",
                    help="skip the does-it-play check (not recommended)")
+    p.add_argument("--no-icons", dest="icons", action="store_false",
+                   help="do not visit a station's own site looking for a logo")
+    p.add_argument("--api", default=API,
+                   help="directory to ask for candidates (default radio-browser)")
     p.add_argument("--strikes", metavar="FILE",
                    help="with --prune: record consecutive failures here and "
                         "drop a station only once it reaches the limit")

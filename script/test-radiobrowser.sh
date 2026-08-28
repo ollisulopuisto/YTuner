@@ -25,12 +25,18 @@ MOCK="$ROOT/script/testdata/mock-radiobrowser.py"
 WORK=$(mktemp -d)
 PID=""
 RB_PID=""
+# Every mock this run started, not only the last: a phase that forgets to stop
+# one would otherwise leave it for the next run to adopt.
+RB_PIDS=""
 cleanup() {
-  if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
-  if [ -n "$RB_PID" ]; then kill "$RB_PID" 2>/dev/null || true; wait "$RB_PID" 2>/dev/null || true; fi
+  if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; fi
+  for p in $RB_PIDS; do
+    kill "$p" 2>/dev/null || true
+    wait "$p" 2>/dev/null || true
+  done
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM PIPE
 
 fail=0
 ok()   { echo "  ok   $1"; }
@@ -45,8 +51,18 @@ start_rb() {
   RB_LOG="$WORK/rb-requests-$RB_PORT.log"
   export RB_LOG
   : > "$RB_LOG"
+  # The readiness probe below cannot tell our mock from one an earlier run
+  # abandoned on this port, and next_ports hands out the same sequence every
+  # run -- so a leaked mock is inherited by the next run of this suite, serving
+  # whatever it was started with. One phase used to leak exactly that way.
+  if curl -fsS --noproxy '*' -o /dev/null -m 2 \
+       "http://127.0.0.1:$RB_PORT/json/countries" 2>/dev/null; then
+    echo "error: something is already serving on port $RB_PORT" >&2
+    exit 1
+  fi
   python3 "$MOCK" "$RB_PORT" "$1" >/dev/null 2>&1 &
   RB_PID=$!
+  RB_PIDS="$RB_PIDS $RB_PID"
   i=0
   while [ "$i" -lt 50 ]; do
     if curl -fsS --noproxy '*' -o /dev/null "http://127.0.0.1:$RB_PORT/json/countries" 2>/dev/null; then
@@ -201,6 +217,7 @@ has   "a station with no bitrate field is kept"  "$S" "No Bitrate Field"
 has   "a station with a string bitrate is kept"  "$S" "String Bitrate"
 hasnt "no variant cast error is logged"          "$(cat "$WORK/run1.log")" "variant"
 stop_server
+stop_rb
 
 # --- name filtering -----------------------------------------------------------
 # NotAllowedInName used to test the URL, so name blocklists did nothing at all
