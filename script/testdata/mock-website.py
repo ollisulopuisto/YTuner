@@ -18,6 +18,7 @@ The homepages are the shapes a logo scraper meets, and the ways they lie:
   /notimage/   a link to something that answers text/html
   /huge/       a link to four megabytes of not-really-an-image
   /empty/      a link to a 200 with no body
+  /unmeasured/ a link to four megabytes sent with no Content-Length at all
 
 A scraper that believes the markup ships a station logo that is really a login
 page; one that believes the Content-Type without a size bound downloads
@@ -58,6 +59,8 @@ PAGES = {
               "</head></html>",
     "/empty/": '<html><head><link rel="icon" href="/empty/nothing.png">'
                "</head></html>",
+    "/unmeasured/": '<html><head><link rel="icon" href="/unmeasured/flood.png">'
+                    "</head></html>",
 }
 
 IMAGES = {"/plain/icon.png", "/absolute/logo.png", "/apple/apple.png"}
@@ -73,6 +76,7 @@ STATIONS = [
     ("Notimage FM", "/notimage/", ""),
     ("Huge FM", "/huge/", ""),
     ("Empty FM", "/empty/", ""),
+    ("Unmeasured FM", "/unmeasured/", ""),
     # Already has a logo: nothing should go looking for another one.
     ("Known FM", "/plain/", "/absolute/logo.png"),
 ]
@@ -108,6 +112,19 @@ class H(BaseHTTPRequestHandler):
             })
         self._send(json.dumps(rows).encode(), "application/json")
 
+    def _send_unmeasured(self, body, ctype):
+        """No Content-Length: the body ends when the connection does.
+
+        Content-Length is a claim, and this is the case that proves a reader
+        which trusts it. A scraper bounded only by the declared length reads
+        all of this.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.end_headers()
+        self.wfile.write(body)
+        self.close_connection = True
+
     def do_GET(self):
         path = self.path.split("?")[0]
         if path.startswith("/json/stations/"):
@@ -129,6 +146,9 @@ class H(BaseHTTPRequestHandler):
             return
         if path == "/huge/enormous.png":
             self._send(b"\0" * (4 * 1024 * 1024), "image/png")
+            return
+        if path == "/unmeasured/flood.png":
+            self._send_unmeasured(b"\0" * (4 * 1024 * 1024), "image/png")
             return
         if path == "/empty/nothing.png":
             self._send(b"", "image/png")

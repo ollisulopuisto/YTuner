@@ -35,7 +35,7 @@ cleanup() {
   fi
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM PIPE
 
 fail=0
 has() {
@@ -57,6 +57,12 @@ is() {
 # produced confident and completely false results in this project twice.
 start_mock() { # $1 = port, remaining = paths that should 404
   port=$1; shift
+  # Whoever is already on this port would answer the readiness probe below and
+  # be mistaken for ours for the rest of the run.
+  if curl -fsS --noproxy '*' -o /dev/null -m 2 "http://127.0.0.1:$port/up" 2>/dev/null; then
+    echo "error: something is already serving on port $port" >&2
+    exit 1
+  fi
   python3 "$MOCK" "$port" "$@" >/dev/null 2>&1 &
   MOCK_PID=$!
   i=0

@@ -49,6 +49,14 @@ ones that actually serve audio:
 ./script/make-preset.py --country fi --out presets/fi.ini
 ```
 
+Stations that radio-browser has no favicon for — most of them — get their logo
+from their own homepage: a `<link rel="icon">`, an `apple-touch-icon` where
+there is one (a 16-pixel favicon scaled up to 200 is a smear), or
+`/favicon.ico` as the last guess. What the page points at is fetched and
+checked before it is believed, since a link can just as easily lead to a login
+page or four megabytes of something calling itself a PNG. `--no-icons` turns
+that off and leaves the logos to the directory.
+
 Then **edit it**. The generator is good at proving a URL plays and bad at
 knowing whether a station belongs in a national preset — it sorts by
 click-count and groups by whatever tag radio-browser happens to carry. Rename

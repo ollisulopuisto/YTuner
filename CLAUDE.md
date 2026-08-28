@@ -61,6 +61,7 @@ it:
     ./script/test-webgui.sh         the stations editor: who it answers, and what a wrong password costs
     ./script/test-remote.sh         the browser remote: what it forwards to the receiver, and what it refuses
     ./script/test-preset-strikes.sh  the preset generator: how many failures it takes to drop a station
+    ./script/test-preset-icons.sh    where a station logo comes from, and what is refused as one
 
 Each takes a binary path as `$1` and needs no network — mocks stand in for
 radio-browser and the preset repository. That makes them an implementation-

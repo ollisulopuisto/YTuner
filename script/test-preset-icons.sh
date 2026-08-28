@@ -34,7 +34,7 @@ cleanup() {
   fi
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM PIPE
 
 fail=0
 has() {
@@ -48,6 +48,15 @@ hasnt() {
 }
 
 start_site() { # $1 = port, $2 = "nofavicon" or empty
+  # A mock left over from an interrupted run answers the readiness probe below
+  # just as well as our own, and then every assertion is about its idea of the
+  # station list rather than this one's. That is not hypothetical: it happened
+  # here, with a mock orphaned by a SIGPIPE, still serving the list from before
+  # a station was added.
+  if curl -fsS --noproxy '*' -o /dev/null -m 2 "http://127.0.0.1:$1/plain/" 2>/dev/null; then
+    echo "error: something is already serving on port $1" >&2
+    exit 1
+  fi
   python3 "$MOCK" "$1" ${2:+"$2"} >/dev/null 2>&1 &
   SITE_PID=$!
   i=0
@@ -79,7 +88,10 @@ echo "- the homepage is read when the directory has no favicon"
 PORT=18800
 P="$WORK/xx.ini"
 start_site "$PORT"
-"$GEN" --country xx --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 \
+# --per-category 20: every station in this fixture is tagged pop, and the
+# default cap of 8 silently dropped the ninth -- which was the one proving the
+# directory's own favicon is preferred.
+"$GEN" --country xx --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 --per-category 20 \
   >"$WORK/build.log" 2>&1 || true
 
 has  "a root-relative href is resolved"   "$(line_of "$P" 'Plain FM')" \
@@ -109,6 +121,13 @@ hasnt "a 200 with no body is not an icon"     "$(line_of "$P" 'Empty FM')" \
       "nothing.png"
 has   "nor does an empty body stop the fallback" "$(line_of "$P" 'Empty FM')" \
       "|http://127.0.0.1:$PORT/favicon.ico"
+# Content-Length is a claim. This one sends four megabytes and declares
+# nothing, so only a reader that bounds what actually arrives stops early --
+# the case a mutation of the arriving-size check survived without.
+hasnt "an undeclared four megabytes is not an icon either" \
+      "$(line_of "$P" 'Unmeasured FM')" "flood.png"
+has   "that site falls back as well"          "$(line_of "$P" 'Unmeasured FM')" \
+      "|http://127.0.0.1:$PORT/favicon.ico"
 has   "the stations themselves are still kept" "$(cat "$P")" "Notimage FM="
 
 echo "- a station the directory already has a logo for is left alone"
@@ -125,7 +144,7 @@ echo "- a site with no icon anywhere leaves the station without one"
 PORT=18801
 P="$WORK/yy.ini"
 start_site "$PORT" nofavicon
-"$GEN" --country yy --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 \
+"$GEN" --country yy --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 --per-category 20 \
   >"$WORK/build2.log" 2>&1 || true
 hasnt "no logo is invented"                   "$(line_of "$P" 'Bare FM')" "|http"
 has   "and the station is still listed"       "$(cat "$P")" "Bare FM="
@@ -138,7 +157,7 @@ echo "- --no-icons does not go to the stations' sites at all"
 PORT=18802
 P="$WORK/zz.ini"
 start_site "$PORT"
-"$GEN" --country zz --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 \
+"$GEN" --country zz --out "$P" --api "http://127.0.0.1:$PORT" --timeout 5 --per-category 20 \
   --no-icons >"$WORK/build3.log" 2>&1 || true
 hasnt "nothing was scraped"                   "$(line_of "$P" 'Plain FM')" "|http"
 has   "the directory's own favicon still is"  "$(line_of "$P" 'Known FM')" \
