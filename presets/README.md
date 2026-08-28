@@ -67,6 +67,38 @@ dead:
 ./script/make-preset.py --prune presets/fi.ini
 ```
 
+## The weekly re-check
+
+`.github/workflows/preset-refresh.yml` runs every Monday, connects to every
+stream in every file here, and opens a pull request if anything changed. It
+never commits to master: what belongs in a national preset is the judgement
+this whole file is about, and a stream can stop answering for reasons that have
+nothing to do with the station being gone.
+
+That last point is why the weekly run does not use plain `--prune`, which drops
+a station the first time it fails to answer. One CDN hiccup at 04:00 on a
+Sunday would otherwise delete a national broadcaster with nobody watching.
+Instead:
+
+```sh
+./script/make-preset.py --prune presets/fi.ini --strikes presets/strikes.json
+```
+
+A failure is recorded rather than acted on, and a station is dropped only after
+three consecutive weekly failures (`--strike-limit`). A run in which it plays
+clears its record, so three failures spread over a year never add up to a
+removal; the record is held against the URL, so fixing a broken link by hand
+does not inherit the old one's strikes.
+
+`presets/strikes.json` is that record, and is carried in the same pull request.
+It is rebuilt from scratch on each run, so a station you delete by hand leaves
+nothing behind. Nothing reads it at runtime — Retuner never sees it.
+
+In the pull request, `warn` lines are a watchlist and `drop` lines are
+removals. Check a dropped station before merging: a stream can refuse a
+datacentre in particular, and a broadcaster that has moved its URL wants the
+new one rather than deleting the entry.
+
 ## How Retuner uses them
 
 Set the countries in the add-on's configuration, or in `retuner.ini`:
