@@ -58,6 +58,36 @@ Browse a few countries on the receiver first — the number before anything has
 been asked for is not the number that matters. Whatever it says, double it and
 buy a board with room to spare.
 
+## Headroom for other things
+
+The usual question is whether a box like this can also be the Spotify endpoint,
+or run something else small beside Retuner. Roughly, and these are estimates
+rather than measurements — do the `ps -o rss=` check above once it is running:
+
+| | RAM | CPU |
+|---|---|---|
+| Retuner | tens of MB, more once a big country is cached | idle between requests |
+| librespot / spotifyd, one stream | tens of MB | a few percent of one core |
+| Re-encoding that stream to MP3 for a receiver | small | under a tenth of a core |
+| dnsmasq | a few MB | nothing |
+
+None of that changes what to buy. A 2 GB Pi 4 or any x86 thin client with 4 GB
+absorbs the lot without noticing. Two cores is plenty; the decode and encode of
+a single audio stream is not a demanding job on hardware made this century.
+
+**The constraint is latency, not the board.** Nothing here lets a receiver join
+Spotify Connect — a receiver plays an HTTP stream, so bridging means running a
+Connect client on this box, re-encoding what it plays, and serving that as a
+station. It works, and the delay is dreadful: receivers buffer internet radio by
+several seconds to tens of seconds, so play, pause and skip in the phone app all
+land that far late. Fine for putting an album on; unusable as a remote control.
+
+So before buying anything for this reason, check what the receiver already does.
+Most AV receivers made since about 2015 have Spotify Connect, AirPlay or
+Chromecast built in, and a Chromecast on an HDMI input covers it on the ones
+that do not. All three are designed for the job and none of them go through a
+radio buffer.
+
 ## The build
 
 ### 1. The system
