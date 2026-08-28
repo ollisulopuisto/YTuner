@@ -385,6 +385,18 @@ jobs:
           # release has to carry one.
           ( cd dist && sha256sum ./*.tar.gz | sed 's| \./| |' > SHA256SUMS )
           cat dist/SHA256SUMS
+          # --generate-notes gives a list of commit subjects, which answers
+          # "what changed" and not "should I install this". doc/release-notes/
+          # is where the second answer lives when someone has written it.
+          notes="doc/release-notes/$tag.md"
+          if [ -f "$notes" ]; then
+            echo "using $notes"
+            set -- --notes-file "$notes"
+          else
+            echo "no $notes; generating notes from the commits"
+            set -- --generate-notes
+          fi
+
           # Publishing from the web UI creates the release first, so creating it
           # again fails. Upload into the one that exists instead.
           if gh release view "$tag" >/dev/null 2>&1; then
@@ -392,6 +404,5 @@ jobs:
             gh release upload "$tag" dist/*.tar.gz dist/SHA256SUMS --clobber
           else
             gh release create "$tag" dist/*.tar.gz dist/SHA256SUMS \
-              --title "Retuner $tag" \
-              --generate-notes
+              --title "Retuner $tag" "$@"
           fi
