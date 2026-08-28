@@ -64,9 +64,15 @@ the categories to something a person would recognise, drop the noise, and put
 the broadcaster's own channels first.
 
 If you cannot reach radio-browser from where you are, the
-`Build a country preset` workflow does the same thing on a GitHub runner and
-uploads the result for you to review:
-Actions → Build a country preset → Run workflow → enter a country code.
+`Build a country preset` workflow does the same thing on a GitHub runner:
+Actions → Build a country preset → Run workflow → enter a country code. It
+opens a pull request with the file, which is somewhere to read it and edit it
+before it becomes real — the whole file is in the description, so a phone is
+enough to tell whether it is worth keeping. The artifact is still attached to
+the run for anyone who would rather download it, and `Open a pull request with
+the result` can be turned off.
+
+It never commits to master, for the reason the next paragraph gives.
 
 To re-check a file that has been sitting for a while and drop what has gone
 dead:
