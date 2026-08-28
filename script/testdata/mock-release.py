@@ -57,11 +57,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path.endswith("/releases/latest") and path.startswith("/repos/"):
             self._send(200, json.dumps({"tag_name": "v" + VERSION}))
             return
+        # Served behind a redirect, because that is what GitHub does: a release
+        # download URL answers 302 to release-assets.githubusercontent.com. The
+        # first version of this handed the file back directly, so the suite
+        # passed against an updater whose curl had no -L and which therefore
+        # never read a checksum in its life.
+        #
+        # The redirect target is tested first on purpose: it also ends in
+        # /SHA256SUMS, so checking the suffix first sends it back to itself and
+        # curl gives up after fifty hops - which looks exactly like the missing
+        # -L this phase exists to catch.
+        if path == "/redirected/SHA256SUMS":
+            self._send(200, checksums(), "text/plain")
+            return
         if path.endswith("/SHA256SUMS"):
             if DIGEST_MODE == "none":
                 self._send(404, "not published", "text/plain")
             else:
-                self._send(200, checksums(), "text/plain")
+                self.send_response(302)
+                self.send_header("Location", "/redirected/SHA256SUMS")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
             return
         if path.endswith("/releases/latest"):
             # The updater reads the version out of where this lands, exactly as
