@@ -245,6 +245,9 @@ const
   ICON_MAX_PIXELS = 16*1024*1024;
 // Ids this server issues are a two letter prefix, an underscore and hex.
   ICON_KEY_MAX_LENGTH = 64;
+// A Denon sends 32 hex characters as 'mac'; twelve is the older form. 64 leaves
+// room for a longer identifier without leaving room for a path.
+  AVR_MAC_MAX_LENGTH = 64;
   COMMON_AVR_INI = True;
   RB_POPULAR_AND_SEARCH_STATIONS_LIMIT = 100;
   RB_MIN_STATIONS_PER_CATEGORY = 3;

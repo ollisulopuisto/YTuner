@@ -105,17 +105,40 @@ var
 function StripHttps(AURL: string; AReq: TRequest):string;
 function GetAVRConfigIdx(AReq: TRequest):integer;
 function ReadAVRINIConfiguration(AAVRMAC: string):integer;
+function IsSafeAVRMAC(const AMAC: string): boolean;
 
 implementation
 
 uses radiobrowser, radiobrowserdb, translator, httpserver;
+
+// With CommonAVRini=0 this value becomes a file name under ConfigPath: it is
+// stat-ed, opened as an ini file, and written to when a key is missing. It
+// arrives in the query string, so 'mac=../escaped' wrote a config file outside
+// the config directory -- an arbitrary .ini create for anyone who can reach the
+// web service, which on the appliance is the whole LAN.
+//
+// The field promises a MAC address and does not deliver one: a real Denon sends
+// 32 hex characters, not twelve. So this bounds the shape rather than matching a
+// MAC, using the character set GetIcon's key check uses, for the same reason.
+function IsSafeAVRMAC(const AMAC: string): boolean;
+var
+  LCh: char;
+begin
+  Result:=False;
+  if (AMAC='') or (Length(AMAC)>AVR_MAC_MAX_LENGTH) then
+    Exit;
+  for LCh in AMAC do
+    if not (LCh in ['A'..'Z','a'..'z','0'..'9','_','-']) then
+      Exit;
+  Result:=True;
+end;
 
 function StripHttps(AURL: string; AReq: TRequest):string;
 var
   LAVRConfigIdx: integer = 0;
   LStripHttps: boolean = False;
 begin
-  if (not CommonAVRini) and (AReq.QueryFields.Values[AVR_MAC].Trim.Length>0) then
+  if (not CommonAVRini) and IsSafeAVRMAC(AReq.QueryFields.Values[AVR_MAC].Trim) then
     begin
       LAVRConfigIdx:=IndexStr(AReq.QueryFields.Values[AVR_MAC].Trim,AVRMACsArray);
       if LAVRConfigIdx<0 then
@@ -138,6 +161,15 @@ begin
   if not CommonAVRini then
     begin
       LAVRMAC:=AReq.QueryFields.Values[AVR_MAC].Trim;
+// An identifier that cannot be a file name falls back to the shared
+// configuration rather than failing the request: a receiver sending something
+// unexpected should still get a station list.
+      if not IsSafeAVRMAC(LAVRMAC) then
+        begin
+          if LAVRMAC<>'' then
+            Logging(ltDebug, 'Ignoring an unusable AVR identifier');
+          Exit;
+        end;
       if (LAVRMAC<>'') then
         begin
           Result:=IndexStr(LAVRMAC,AVRMACsArray);

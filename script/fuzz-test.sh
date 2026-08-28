@@ -352,10 +352,83 @@ INI
   SERVER_PID=""
 }
 
+# $1 = web port. With CommonAVRini=0 the mac query parameter becomes a file
+# name under the config directory - it is stat-ed, opened as an ini file, and
+# written to when a key is missing. It arrives from the query string, so it is
+# an untrusted string being used as a path, which is the same shape as the icon
+# id above.
+#
+# A real Denon sends 32 hex characters, not a 12-character MAC, so this is not
+# a field anyone should assume is well formed just because the name says "mac".
+hostile_macs() {
+  run=$WORK/macs
+  mkdir -p "$run/config"
+  cat > "$run/retuner.ini" <<INI
+[Configuration]
+INIVersion=1.2.2
+MessageInfoLevel=1
+IPAddress=127.0.0.1
+CommonAVRini=0
+[WebServer]
+WebServerIPAddress=127.0.0.1
+WebServerPort=$1
+[DNSServer]
+Enable=0
+[RadioBrowser]
+Enable=0
+[MyStations]
+Enable=0
+INI
+  cat > "$run/config/avr.ini" <<INI
+[Configuration]
+INIVersion=1.0.2
+Protocol=
+[MainMenu Items]
+IdentifiersList=radiobrowser
+LabelsList=Radio Browser
+[RadioBrowser Filtering]
+[RadioBrowser Sorting]
+INI
+  start_server "$run" "$1"
+  echo "MACs that are not MACs"
+  for mac in '../escaped' '..%2Fescaped' '....//escaped' '../../escaped' \
+             '/tmp/retuner-escaped' '%2Ftmp%2Fretuner-escaped'; do
+    curl -fsS --noproxy '*' --max-time 10 -o /dev/null \
+      "http://127.0.0.1:$1/setupapp/x/loginxml.asp?mac=$mac" 2>/dev/null || true
+  done
+  # Anything written outside config/ is the failure. The config directory is
+  # allowed to fill up with junk; escaping it is not.
+  escaped=$(find "$run" -maxdepth 1 -name '*.ini' -not -name 'retuner.ini' 2>/dev/null | wc -l)
+  escaped=$((escaped + $(find /tmp -maxdepth 1 -name 'retuner-escaped.ini' 2>/dev/null | wc -l)))
+  if [ "$escaped" -eq 0 ]; then
+    ok "no config file was written outside the config directory"
+  else
+    bad "$escaped file(s) were written outside the config directory"
+    find "$run" -maxdepth 1 -name '*.ini' -not -name 'retuner.ini' | sed 's/^/       /'
+    find /tmp -maxdepth 1 -name 'retuner-escaped.ini' | sed 's/^/       /'
+    rm -f /tmp/retuner-escaped.ini
+  fi
+
+  # The mode still has to work: a receiver with a plausible identifier gets its
+  # own file. A fix that simply stopped writing them would pass the check above.
+  real=9392EAA878093E288048CF90D02D37EC
+  curl -fsS --noproxy '*' --max-time 10 -o /dev/null \
+    "http://127.0.0.1:$1/setupapp/x/loginxml.asp?mac=$real" 2>/dev/null || true
+  if [ -f "$run/config/$real.ini" ]; then
+    ok "a receiver's own identifier still gets its own config file"
+  else
+    bad "the per-AVR config file was not created for a valid identifier"
+  fi
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  SERVER_PID=""
+}
+
 echo "Fuzzing $BIN"
 fuzz_dns "$PORT" "$((PORT + 1))"
 fuzz_images "$((PORT + 2))" "$((PORT + 3))"
 hostile_ids "$((PORT + 4))"
+hostile_macs "$((PORT + 5))"
 
 if [ "$fail" -ne 0 ]; then
   exit 1
