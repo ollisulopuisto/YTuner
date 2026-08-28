@@ -1,0 +1,75 @@
+name: Cut a release
+
+# The version is already written down -- in src/common.pas, and again in the
+# add-on's config.yaml -- so a release is not a decision about a number, it is
+# the act of building that commit and publishing it. This does that from a
+# button, which is also the only way it can be done by anyone without rights to
+# push a tag.
+#
+# It deliberately does not bump anything. APP_VERSION moves in a commit that
+# says why, gets reviewed, and lands on master; this publishes what is there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Check the version and stop, without publishing'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: What is being released
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.read.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version, and check the two places agree
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          # The single quotes in the Pascal constant are the delimiters, which
+          # is what makes this greppable at all: APP_VERSION = '26.08.28.3';
+          app=$(sed -n "s/^ *APP_VERSION *= *'\([0-9.]*\)'.*/\1/p" src/common.pas)
+          addon=$(sed -n 's/^version: *"\([0-9.]*\)".*/\1/p' retuner/config.yaml)
+          echo "src/common.pas:      $app"
+          echo "retuner/config.yaml: $addon"
+
+          [ -n "$app" ] || { echo "no APP_VERSION found in src/common.pas"; exit 1; }
+          # The add-on's version tracks APP_VERSION, and a release where they
+          # disagree ships a binary and an add-on that claim different things.
+          if [ "$app" != "$addon" ]; then
+            echo "::error::src/common.pas says $app and retuner/config.yaml says $addon"
+            exit 1
+          fi
+
+          # A release that already exists must not be quietly rebuilt into:
+          # people have downloaded it, and the updater verifies against the
+          # SHA256SUMS it published.
+          if gh release view "v$app" >/dev/null 2>&1; then
+            echo "::error::v$app is already released. Bump APP_VERSION first."
+            exit 1
+          fi
+
+          echo "tag=v$app" >> "$GITHUB_OUTPUT"
+          echo "Would publish v$app"
+
+  build:
+    name: Build and publish
+    needs: version
+    if: ${{ !inputs.dry_run }}
+    permissions:
+      contents: write
+    # The same matrix every push builds, so a release is not a different build
+    # from the one that has been green all along -- only its destination is.
+    uses: ./.github/workflows/binaries.yml
+    with:
+      release_tag: ${{ needs.version.outputs.tag }}

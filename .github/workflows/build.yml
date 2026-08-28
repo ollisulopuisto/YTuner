@@ -147,6 +147,16 @@ jobs:
           opts, schema = set(cfg['options']), set(cfg['schema'])
           assert opts == schema, f'options/schema mismatch: {opts ^ schema}'
 
+          # The add-on's version tracks APP_VERSION. They drifted apart once
+          # already, when two branches bumped it independently, and the only
+          # thing that noticed was a merge conflict -- which would not have
+          # happened had one of them touched only one of the two files.
+          import re
+          pas = open('src/common.pas').read()
+          app = re.search(r"^ *APP_VERSION *= *'([0-9.]+)'", pas, re.M).group(1)
+          assert cfg['version'] == app, \
+              f"config.yaml says {cfg['version']}, src/common.pas says {app}"
+
           build = yaml.safe_load(open('retuner/build.yaml'))
           missing = set(cfg['arch']) - set(build['build_from'])
           assert not missing, f'build.yaml has no base image for {missing}'

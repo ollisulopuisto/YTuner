@@ -15,15 +15,27 @@ on:
     types: [published]
   pull_request:
   workflow_dispatch:
+  # Called by release.yml, which is how a release gets cut without anyone
+  # holding tag-push rights: a tag pushed with GITHUB_TOKEN raises no push
+  # event, so delegating to the tag trigger above would build nothing. The
+  # caller passes the tag it wants published; everything else is identical.
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'Publish the build as this tag, e.g. v26.08.28.3'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
-# A push supersedes the run before it. Without this a hung job holds a runner
+# A push supersedes the run before it -- without this a hung job holds a runner
 # until the six-hour ceiling, which is how one stalled download outlived several
-# later pushes.
+# later pushes. But a release must not be superseded by the next push to master,
+# so a called run carries the tag in its group and the two never share one.
 concurrency:
-  group: binaries-${{ github.ref }}
+  group: binaries-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -347,7 +359,7 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -361,9 +373,12 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           ls -l dist
-          tag=${GITHUB_REF_NAME}
+          # GITHUB_REF_NAME is the branch when release.yml called this, so the
+          # tag it asked for wins where there is one.
+          tag=${RELEASE_TAG:-${GITHUB_REF_NAME}}
           # Checksums the updater can actually verify against. GitHub's REST
           # API does not publish a per-asset digest - the field exists in some
           # clients' enriched responses and not in the API itself - so the
