@@ -10,12 +10,19 @@ the process down with a double free.
     mock-radiobrowser.py <port> [mode]
 
 modes:  ok (default) | empty | malformed
+
+Set RB_LOG to a file path and every request line is appended to it, query
+string included. That is the only way to assert on what Retuner *asked* for
+rather than what it did with the answer -- ordering is a property of the
+upstream query, and it is invisible in the response the mock sends back.
 """
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "ok"
+REQUEST_LOG = os.environ.get("RB_LOG")
 
 STATIONS = [
     # name, url, bitrate (None = field absent, str = wrong type), codec
@@ -88,6 +95,9 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if REQUEST_LOG:
+            with open(REQUEST_LOG, "a") as fh:
+                fh.write(self.path + "\n")
         p = self.path.split("?")[0]
         if p == "/json/countries":
             self._send(COUNTRIES)

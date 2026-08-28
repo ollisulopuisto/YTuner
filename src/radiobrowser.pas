@@ -58,7 +58,12 @@ const
   API_BULK_LIMIT = 1000000;
 
   API_POPULAR_FILTER_PATH = '?order=votes&reverse=true&limit=';
-  API_SEARCH_FILTER_PATH = '?order=name&reverse=false&limit=';
+// radio-browser matches name= as a substring, so a short query matches far more
+// than it looks like: "yle" also returns Hardstyle, Freestyle and Mylene Farmer.
+// Ordering alphabetically then put "101.ru Mylene Farmer" first and Yle Radio
+// Suomi somewhere inside 125 pages, which on an AVR remote is indistinguishable
+// from search being broken. Rank by votes like the popular list above does.
+  API_SEARCH_FILTER_PATH = '?order=votes&reverse=true&limit=';
   API_HIDEBROKEN_FILTER_PATH = 'hidebroken=true';
 //  API_CHECK_FILTER_PATH = 'lastcheckok=1';
 

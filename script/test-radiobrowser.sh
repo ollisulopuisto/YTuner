@@ -39,6 +39,12 @@ bad()  { echo "  FAIL $1"; fail=1; }
 cp "$BIN" "$WORK/retuner"
 
 start_rb() {
+  # Per-phase request log. Sharing one file across phases would let an earlier
+  # phase's query satisfy a later assertion -- the same class of bug as sharing
+  # ports, which has bitten this suite twice.
+  RB_LOG="$WORK/rb-requests-$RB_PORT.log"
+  export RB_LOG
+  : > "$RB_LOG"
   python3 "$MOCK" "$RB_PORT" "$1" >/dev/null 2>&1 &
   RB_PID=$!
   i=0
@@ -281,6 +287,29 @@ start_server "$WORK/run8.log"
 S=$(stations)
 hasnt "a filter in the per-MAC file is applied"  "$S" "Over The Limit"
 has   "a station under the limit still comes through" "$S" "Low Bitrate FM"
+stop_server; stop_rb
+
+# --- what search asks upstream for -------------------------------------------
+# radio-browser matches `name=` as a substring, so a short query matches far
+# more than it looks like it should: searching "yle" returns Hardstyle,
+# Freestyle and Mylene Farmer. Which of those the AVR shows first is decided
+# entirely by the order= in our own query. Alphabetical put "101.ru Mylene
+# Farmer" on line one and Yle Radio Suomi somewhere inside 125 pages, which on
+# a remote control is indistinguishable from search being broken.
+#
+# The ordering is invisible in the response, so this asserts on the request the
+# mock recorded. Popular already asks for votes descending; search is the
+# odd one out.
+echo "- search asks upstream for the most-voted stations first"
+next_ports; start_rb ok; write_config "" "" ""
+start_server "$WORK/run-searchorder.log"
+curl -fsS --noproxy '*' -o /dev/null \
+  "http://127.0.0.1:$PORT/retuner/search?search=yle&mac=$MAC" 2>/dev/null || true
+Q=$(grep '/json/stations/search' "$RB_LOG" 2>/dev/null || true)
+has   "search reaches radio-browser at all"      "$Q" "name=yle"
+has   "ordered by votes, not alphabetically"     "$Q" "order=votes"
+has   "most-voted first"                         "$Q" "reverse=true"
+hasnt "no alphabetical ordering is requested"    "$Q" "order=name"
 stop_server; stop_rb
 
 if [ "$fail" -ne 0 ]; then
