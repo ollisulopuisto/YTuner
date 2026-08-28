@@ -46,9 +46,15 @@ fail=0
 # used to leave its server alive holding a port, and the next run of the suite
 # then talked to it instead of its own.
 STARTED_PIDS=""
+# kill and then wait: kill only asks. Without the wait the script exits while
+# the children are still going, and a CI runner then reports them as orphans it
+# had to terminate -- which is the same shape as the stray server above, one
+# step later.
 cleanup() {
   for p in $STARTED_PIDS; do kill "$p" 2>/dev/null || true; done
   [ -z "$MOCK_PID" ] || kill "$MOCK_PID" 2>/dev/null || true
+  for p in $STARTED_PIDS; do wait "$p" 2>/dev/null || true; done
+  [ -z "$MOCK_PID" ] || wait "$MOCK_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM

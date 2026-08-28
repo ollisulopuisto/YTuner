@@ -29,7 +29,7 @@ PASSWORD='s3cret'
 
 cleanup() {
   if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
-  if [ -n "$DENON_PID" ]; then kill "$DENON_PID" 2>/dev/null || true; fi
+  if [ -n "$DENON_PID" ]; then kill "$DENON_PID" 2>/dev/null || true; wait "$DENON_PID" 2>/dev/null || true; fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM

@@ -26,9 +26,11 @@ REPO_PID=""
 cleanup() {
   if [ -n "$PID" ]; then
     kill "$PID" 2>/dev/null || true
+    wait "$PID" 2>/dev/null || true
   fi
   if [ -n "$REPO_PID" ]; then
     kill "$REPO_PID" 2>/dev/null || true
+    wait "$REPO_PID" 2>/dev/null || true
   fi
   rm -rf "$WORK"
 }
