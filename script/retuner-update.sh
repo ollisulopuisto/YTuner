@@ -81,7 +81,12 @@ curl -fsSL -o "$WORK/$ASSET" "$DOWNLOAD/$REPO/releases/download/v$LATEST/$ASSET"
 # per-asset digest. Some clients present an enriched response that does, which
 # is exactly how the first version of this check came to be written against a
 # field that is not there, and to report "no digest published" every time.
-digest=$(curl -fsS "$DOWNLOAD/$REPO/releases/download/v$LATEST/SHA256SUMS" 2>/dev/null \
+# -L, and it is the whole fix: a release download URL answers 302 to
+# release-assets.githubusercontent.com, and -f does not treat a 302 as an
+# error, so without it curl exits 0 having written nothing and the check
+# reports there are no checksums. The archive download above always had -L,
+# which is why that half worked.
+digest=$(curl -fsSL "$DOWNLOAD/$REPO/releases/download/v$LATEST/SHA256SUMS" 2>/dev/null \
   | awk -v a="$ASSET" '$2 == a { print $1; exit }') || digest=
 if [ -n "$digest" ]; then
   if command -v shasum >/dev/null 2>&1; then
@@ -142,11 +147,31 @@ fi
 say "the new binary serves"
 
 # Where the service answers, so the health check below asks the right socket.
-# A specific WebServerIPAddress means it is not listening on loopback at all.
-host=$(sed -n 's/^WebServerIPAddress=//p' "$PREFIX/retuner.ini" 2>/dev/null | head -1)
-case "$host" in ''|default|0.0.0.0) host=127.0.0.1 ;; esac
+#
+# "default" does NOT mean loopback, and reading it that way rolled back a good
+# update on a real install: Retuner resolves default to the machine's LAN
+# address and binds that one specifically (Application.Address), so nothing is
+# listening on 127.0.0.1 at all. The check then failed, the update was undone,
+# and the rollback "failed" too - because both probes asked an address the
+# service had never been on.
+#
+# So ask every address it could be on and accept any of them. The log is the
+# ground truth: it prints the address it actually bound.
 port=$(sed -n 's/^WebServerPort=//p' "$PREFIX/retuner.ini" 2>/dev/null | head -1)
 [ -n "$port" ] || port=80
+cfg_host=$(sed -n 's/^WebServerIPAddress=//p' "$PREFIX/retuner.ini" 2>/dev/null | head -1)
+LOGFILE=${LOGFILE:-$PREFIX/retuner.log}
+
+candidate_hosts() {
+  # Newest first: what the running service last said it bound.
+  tail -n 500 "$LOGFILE" 2>/dev/null \
+    | sed -n 's/.*Web Service: listening on: \([0-9][0-9.]*\):.*/\1/p' | tail -1
+  case "$cfg_host" in
+    ''|default|0.0.0.0) ;;
+    *) printf '%s\n' "$cfg_host" ;;
+  esac
+  printf '127.0.0.1\n'
+}
 
 # Overridable so an install that is not launchd-with-this-label - a different
 # unit name, a container, the test suite - can say how to restart itself. A
@@ -166,12 +191,16 @@ restart() {
 healthy() {
   i=0
   while [ "$i" -lt 150 ]; do
-    if curl -fsS --noproxy '*' -o /dev/null \
-         "http://$host:$port/setupapp/x/loginxml.asp?token=0" 2>/dev/null; then
-      return 0
-    fi
+    for h in $(candidate_hosts); do
+      if curl -fsS --noproxy '*' -o /dev/null --max-time 5 \
+           "http://$h:$port/setupapp/x/loginxml.asp?token=0" 2>/dev/null; then
+        say "answering on $h:$port"
+        return 0
+      fi
+    done
     i=$((i + 1)); sleep 0.2
   done
+  say "no answer on any of: $(candidate_hosts | tr '\n' ' ')port $port"
   return 1
 }
 
@@ -192,7 +221,7 @@ if healthy; then
   exit 0
 fi
 
-say "the service did not answer on $host:$port after the update; rolling back"
+say "the service did not answer after the update; rolling back"
 cp "$PREFIX/retuner.previous" "$PREFIX/retuner"
 restart
 if healthy; then

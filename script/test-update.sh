@@ -131,6 +131,7 @@ update() { # runs the updater against the mock, returns its exit status
   DOWNLOAD="http://127.0.0.1:$MOCK_PORT" \
   API="http://127.0.0.1:$MOCK_PORT" \
   RESTART_CMD="$WORK/restart.sh" \
+  LOGFILE="${LOGFILE:-$WORK/install/service.log}" \
   PROBE_PORT=18903 \
     sh "$ROOT/script/retuner-update.sh" "$@" > "$WORK/update.log" 2>&1
 }
@@ -205,6 +206,43 @@ else bad "a binary that cannot serve was installed anyway"; fi
 if [ "$(cat "$WORK/install/.version")" = "1.0.0.0" ]; then
   ok "the recorded version does not move"
 else bad "the recorded version moved on a failed update"; fi
+
+# --- the address the service actually binds -----------------------------------
+# WebServerIPAddress=default is the shipped value and does not mean loopback:
+# Retuner resolves it to the machine's LAN address and binds that one
+# specifically. A health check that assumed 127.0.0.1 therefore found nothing,
+# rolled back an update that had worked, and then reported the rollback broken
+# as well - on a real install, on the first release this updater was ever asked
+# to fetch. Both probes were asking an address the service had never been on.
+echo "- an install whose service does not listen on loopback"
+install_version 1.0.0.0
+# Both keys, and that matters: "default" for WebServerIPAddress is resolved
+# against IPAddress, so leaving IPAddress pinned to 127.0.0.1 makes the service
+# bind loopback after all and the phase proves nothing. The first version of
+# this rewrote one key and passed against the very bug it exists for.
+awk '/^IPAddress=/ { print "IPAddress=default"; next }
+     /^WebServerIPAddress=/ { print "WebServerIPAddress=default"; next }
+     { print }' "$WORK/install/retuner.ini" > "$WORK/r.new"
+mv "$WORK/r.new" "$WORK/install/retuner.ini"
+make_release 8.0.0.0 "$BIN"
+start_mock 8.0.0.0 good
+if LOGFILE="$WORK/install/service.log" update; then
+  ok "the updater succeeds"
+else
+  bad "a service not on loopback was treated as a failed update"
+  sed -n '1,12p' "$WORK/update.log"
+fi
+if grep -q "answering on" "$WORK/update.log"; then
+  ok "it names the address it found the service on"
+else bad "it did not say where it found the service"; fi
+if grep -q "rolling back" "$WORK/update.log"; then
+  bad "it rolled back a healthy update"
+else ok "it does not roll back a healthy update"; fi
+if [ "$(cat "$WORK/install/.version")" = "8.0.0.0" ]; then
+  ok "the recorded version moves"
+else bad "the recorded version is $(cat "$WORK/install/.version")"; fi
+stop_server 2>/dev/null || true
+stop_service
 
 # --- the rollback ------------------------------------------------------------
 # The probe cannot catch everything: a build can start perfectly against a
