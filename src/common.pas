@@ -120,6 +120,7 @@ const
   INI_MESSAGE_INFO_LEVEL = 'MessageInfoLevel';
   INI_ICON_SIZE = 'IconSize';
   INI_ICON_CACHE = 'IconCache';
+  INI_ICON_PLACEHOLDER = 'IconPlaceholder';
   INI_ICON_EXTENSION = 'IconEndPointExtension';
   INI_MY_TOKEN = 'MyToken';
   INI_COMMON_AVR_INI = 'CommonAVRini';
@@ -235,6 +236,11 @@ const
 
   ICON_SIZE = 200;
   ICON_CACHE = True;
+// On, because the alternative is what shipped: a 404, which a receiver takes as
+// final and never retries. Off restores the old behaviour for anyone who
+// would rather see the receiver's own blank tile than a mark that is not the
+// station's.
+  ICON_PLACEHOLDER = True;
 // A station logo is fetched from whatever URL the directory carries, so these
 // are limits on what a stranger can make this process allocate. TFPMemoryImage
 // gives every pixel a TFPColor, which is eight bytes, so the pixel ceiling is
