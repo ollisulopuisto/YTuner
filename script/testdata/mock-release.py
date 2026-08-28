@@ -5,12 +5,17 @@
 
 Serves the three things the updater asks for:
 
-    /<owner>/<repo>/releases/latest                    -> 302 to the tag URL
-    /<owner>/<repo>/releases/download/v<ver>/<asset>   -> the file
-    /repos/<owner>/<repo>/releases/latest              -> JSON carrying a digest
+    /<owner>/<repo>/releases/latest                     -> 302 to the tag URL
+    /<owner>/<repo>/releases/download/v<ver>/<asset>    -> the file
+    /<owner>/<repo>/releases/download/v<ver>/SHA256SUMS -> the checksums
 
 digest-mode is "good" (the real sha256), "bad" (a wrong one, so the updater
-must refuse) or "none" (no digest field at all, which must not stop it).
+must refuse) or "none" (no SHA256SUMS published at all, which must not stop
+it - releases made before that file existed have none).
+
+The checksums come from a published file rather than the REST API because the
+API has no per-asset digest. The first version of this served one in JSON, and
+so tested a field GitHub does not send.
 """
 import hashlib
 import http.server
@@ -24,18 +29,15 @@ ASSET_DIR = sys.argv[3]
 DIGEST_MODE = sys.argv[4] if len(sys.argv) > 4 else "good"
 
 
-def assets():
-    out = []
+def checksums():
+    lines = []
     for name in sorted(os.listdir(ASSET_DIR)):
         if not name.endswith(".tar.gz"):
             continue
-        entry = {"name": name, "browser_download_url": "/download/" + name}
-        if DIGEST_MODE != "none":
-            with open(os.path.join(ASSET_DIR, name), "rb") as f:
-                real = hashlib.sha256(f.read()).hexdigest()
-            entry["digest"] = "sha256:" + ("0" * 64 if DIGEST_MODE == "bad" else real)
-        out.append(entry)
-    return out
+        with open(os.path.join(ASSET_DIR, name), "rb") as f:
+            real = hashlib.sha256(f.read()).hexdigest()
+        lines.append("%s  %s" % ("0" * 64 if DIGEST_MODE == "bad" else real, name))
+    return "\n".join(lines) + "\n"
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -53,7 +55,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path
         if path.endswith("/releases/latest") and path.startswith("/repos/"):
-            self._send(200, json.dumps({"tag_name": "v" + VERSION, "assets": assets()}))
+            self._send(200, json.dumps({"tag_name": "v" + VERSION}))
+            return
+        if path.endswith("/SHA256SUMS"):
+            if DIGEST_MODE == "none":
+                self._send(404, "not published", "text/plain")
+            else:
+                self._send(200, checksums(), "text/plain")
             return
         if path.endswith("/releases/latest"):
             # The updater reads the version out of where this lands, exactly as

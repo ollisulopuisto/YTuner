@@ -174,6 +174,13 @@ else bad "config/avr.ini was replaced"; fi
 if [ -f "$WORK/install/retuner.previous" ]; then
   ok "the previous binary is kept for rollback"
 else bad "no previous binary was kept"; fi
+# The first version of this check read a digest out of the REST API, where
+# there is none, so it silently reported "no digest published" on every real
+# release and never once compared anything. A check that cannot be seen
+# succeeding is a check nobody knows is broken.
+if grep -q "sha256 verified" "$WORK/update.log"; then
+  ok "the checksum was actually compared, not skipped"
+else bad "the update ran without verifying the checksum"; fi
 if curl -fsS --noproxy '*' -o /dev/null \
      "http://127.0.0.1:$PORT/setupapp/x/loginxml.asp?token=0" 2>/dev/null; then
   ok "the service is serving afterwards"
@@ -239,7 +246,7 @@ else bad "nothing is serving after the rollback"; fi
 rm -f "$WORK/refuse"
 
 # --- a wrong checksum --------------------------------------------------------
-echo "- a published digest that does not match"
+echo "- published checksums that do not match"
 install_version 1.0.0.0
 make_release 4.0.0.0 "$BIN"
 start_mock 4.0.0.0 bad
@@ -254,16 +261,17 @@ if [ "$(cksum < "$WORK/install/retuner")" = "$before" ]; then
 else bad "the binary was replaced despite the mismatch"; fi
 
 # --- no digest published -----------------------------------------------------
-# Missing metadata must not become a reason the machine can never update again.
-echo "- a release with no digest published"
+# Releases made before SHA256SUMS existed have none, and that must not become a
+# reason those machines can never update again.
+echo "- a release with no SHA256SUMS published"
 install_version 1.0.0.0
 make_release 5.0.0.0 "$BIN"
 start_mock 5.0.0.0 none
 if update; then ok "the updater still succeeds"; else
   bad "a missing digest blocked the update"; sed -n '1,20p' "$WORK/update.log"; fi
-if grep -q "no published digest" "$WORK/update.log"; then
+if grep -q "no SHA256SUMS published" "$WORK/update.log"; then
   ok "it says it could not check one"
-else bad "it did not mention the missing digest"; fi
+else bad "it did not mention the missing checksums"; fi
 
 # --- --check changes nothing -------------------------------------------------
 echo "- --check reports without acting"

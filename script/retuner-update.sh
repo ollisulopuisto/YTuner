@@ -72,13 +72,18 @@ say "downloading $ASSET"
 curl -fsSL -o "$WORK/$ASSET" "$DOWNLOAD/$REPO/releases/download/v$LATEST/$ASSET" \
   || die "download failed"
 
-# Best effort integrity check. TLS to GitHub already says the bytes came from
-# GitHub, so this is guarding against a truncated or half-uploaded asset rather
-# than against an attacker. The release API carries a sha256 per asset; if it
-# cannot be read, that is not a reason to refuse to update.
-digest=$(curl -fsS "$API/repos/$REPO/releases/latest" 2>/dev/null \
-  | tr -d ' \n' | tr '{' '\n' | grep -F "\"name\":\"$ASSET\"" \
-  | sed -n 's/.*"digest":"sha256:\([0-9a-f]\{64\}\)".*/\1/p' | head -1) || digest=
+# Best effort integrity check, against the SHA256SUMS the release job publishes
+# beside the archives. TLS to GitHub already says the bytes came from GitHub, so
+# this guards against a truncated or half-uploaded asset rather than against an
+# attacker - and releases made before SHA256SUMS existed have none, which is not
+# a reason to refuse to update forever.
+#
+# It reads the published file and not the REST API on purpose: the API has no
+# per-asset digest. Some clients present an enriched response that does, which
+# is exactly how the first version of this check came to be written against a
+# field that is not there, and to report "no digest published" every time.
+digest=$(curl -fsS "$DOWNLOAD/$REPO/releases/download/v$LATEST/SHA256SUMS" 2>/dev/null \
+  | awk -v a="$ASSET" '$2 == a { print $1; exit }') || digest=
 if [ -n "$digest" ]; then
   if command -v shasum >/dev/null 2>&1; then
     got=$(shasum -a 256 "$WORK/$ASSET" | cut -d' ' -f1)
@@ -88,7 +93,7 @@ if [ -n "$digest" ]; then
   [ "$got" = "$digest" ] || die "sha256 mismatch: got $got, expected $digest"
   say "sha256 verified"
 else
-  say "no published digest found; continuing on the TLS transport alone"
+  say "no SHA256SUMS published for v$LATEST; continuing on the TLS transport alone"
 fi
 
 tar -xzf "$WORK/$ASSET" -C "$WORK" || die "archive did not extract"

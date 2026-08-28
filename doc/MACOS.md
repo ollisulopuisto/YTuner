@@ -164,10 +164,11 @@ What it will and will not touch:
   answer, it is put back and restarted again. This is the reason the whole thing
   exists — a bad release on a machine nobody is sitting at otherwise means no
   radio until somebody drives there.
-- **Checksums are checked when published.** The release API carries a sha256 per
-  asset; a mismatch refuses the update. A release without one still installs, on
-  the strength of TLS to GitHub — missing metadata should not mean a machine can
-  never update again.
+- **Checksums are checked when published.** Releases carry a `SHA256SUMS` file
+  beside the archives, and a mismatch refuses the update. Releases made before
+  that file existed have none and still install, on the strength of TLS to
+  GitHub — a missing file should not mean a machine can never update again.
+  `sha256 verified` in the log is how you know the comparison actually ran.
 
 `/usr/local/retuner/update.log` records every run, including the ones that found
 nothing to do.
