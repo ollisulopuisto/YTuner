@@ -388,7 +388,10 @@ begin
     P.Add('.wrap{max-width:640px;margin:0 auto;padding:24px 16px 60px}');
     P.Add('h1{font-size:22px;margin:0 0 2px}.sub{color:var(--soft);margin:0 0 18px;font-size:13px}');
     P.Add('.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:14px}');
-    P.Add('.row{padding:9px 12px;border-radius:6px;font-variant-numeric:tabular-nums}');
+    P.Add('.row{padding:9px 12px;border-radius:6px;font-variant-numeric:tabular-nums;cursor:pointer}');
+    P.Add('.row:hover{background:var(--line)}');
+    P.Add('.row.cur:hover{background:var(--accent)}');
+    P.Add('.row.busy{opacity:.5}');
     P.Add('.row.cur{background:var(--accent);color:#fff;font-weight:600}');
     P.Add('.page{color:var(--soft);font-size:13px;text-align:right;padding:4px 12px}');
     P.Add('.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;margin:0 auto}');
@@ -399,7 +402,7 @@ begin
     P.Add('.err{color:var(--danger);font-size:14px;padding:8px 12px}');
     P.Add('</style></head><body id="retuner-remote"><div class="wrap">');
     P.Add('<h1>Retuner remote</h1>');
-    P.Add('<p class="sub">The list your receiver is showing. Arrow keys and Enter work too.</p>');
+    P.Add('<p class="sub">The list your receiver is showing. Click a line to go to it; arrow keys and Enter work too.</p>');
     P.Add('<div class="card"><div id="list"></div><div class="page" id="page"></div></div>');
     P.Add('<div class="card"><form id="search" autocomplete="off">');
     P.Add('<input id="q" maxlength="30" placeholder="Search stations by keyword">');
@@ -419,11 +422,20 @@ begin
     P.Add(' listEl.innerHTML="";');
     P.Add(' d.lines.forEach(function(l){');
     P.Add('  var r=document.createElement("div");');
-    P.Add('  r.className="row"+(l.flag===8?" cur":"");');
-    P.Add('  r.textContent=l.text;listEl.appendChild(r);});');
+    P.Add('  r.className="row"+(l.cursor?" cur":"");');
+    P.Add('  r.textContent=l.text;');
+    P.Add('  r.addEventListener("click",function(){select(l.index,r);});');
+    P.Add('  listEl.appendChild(r);});');
     P.Add(' pageEl.textContent=d.page||"";}');
     P.Add('function poll(){fetch("api/remote/status",{credentials:"same-origin"})');
     P.Add(' .then(function(r){return r.json();}).then(draw)');
+    P.Add(' .catch(function(){show("Cannot reach Retuner.");});}');
+    P.Add('function select(i,row){');
+    P.Add(' row.classList.add("busy");');
+    P.Add(' fetch("api/remote/select",{method:"POST",credentials:"same-origin",');
+    P.Add('  headers:{"Content-Type":"application/json"},body:JSON.stringify({index:i})})');
+    P.Add(' .then(function(r){return r.json();})');
+    P.Add(' .then(function(d){if(!d.ok)show(d.error||"Refused.");setTimeout(poll,500);})');
     P.Add(' .catch(function(){show("Cannot reach Retuner.");});}');
     P.Add('function send(c){fetch("api/remote/cmd",{method:"POST",credentials:"same-origin",');
     P.Add(' headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:c})})');
@@ -462,6 +474,35 @@ begin
       begin
         AValue:=TJSONObject(LData).Get(AField,'');
         Result:=True;
+      end;
+  except
+    on E: Exception do
+      Result:=False;
+  end;
+  LData.Free;
+end;
+
+// The page sends one number per request here; a body that is not that is
+// malformed, and a float or a string is not "close enough" to a line index.
+function IntegerFieldOf(const ABody, AField: string; out AValue: integer): boolean;
+var
+  LData: TJSONData = nil;
+  LObject: TJSONObject;
+  LField: TJSONData;
+begin
+  Result:=False;
+  AValue:=0;
+  try
+    LData:=GetJSON(ABody);
+    if LData is TJSONObject then
+      begin
+        LObject:=TJSONObject(LData);
+        LField:=LObject.Find(AField);
+        if (LField<>nil) and (LField.JSONType=jtNumber) then
+          begin
+            AValue:=LField.AsInteger;
+            Result:=True;
+          end;
       end;
   except
     on E: Exception do
@@ -592,6 +633,7 @@ end;
 procedure TWebGUIServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
 var
   LError, LPath, LValue: string;
+  LIndex: integer;
 begin
   if not ClientAllowed(ARequest.RemoteAddress) then
     begin
@@ -673,6 +715,19 @@ begin
               Logging(ltWarning, string.Join(' ',[WEBGUI_SERVICE+': remote refused',LValue,'from',ARequest.RemoteAddress]));
               SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON(LError));
             end;
+        end;
+    '/api/remote/select':
+      if ARequest.Method<>'POST' then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('POST required.'))
+      else if not IntegerFieldOf(ARequest.Content,'index',LIndex) then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('Malformed request.'))
+      else
+        begin
+          LError:=RemoteSelect(LIndex);
+          if LError.IsEmpty then
+            SendJSON(AResponse,HTTP_CODE_OK,'{"ok":true}')
+          else
+            SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON(LError));
         end;
     '/api/remote/search':
       if ARequest.Method<>'POST' then

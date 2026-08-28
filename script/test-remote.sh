@@ -32,7 +32,7 @@ cleanup() {
   if [ -n "$DENON_PID" ]; then kill "$DENON_PID" 2>/dev/null || true; wait "$DENON_PID" 2>/dev/null || true; fi
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM PIPE
 
 fail=0
 ok()   { echo "  ok   $1"; }
@@ -42,6 +42,10 @@ has() {
   if printf '%s' "$2" | grep -q "$3"; then ok "$1"; else
     bad "$1 (expected '$3')"; printf '       got: %.400s\n' "$2"
   fi
+}
+is() {
+  if [ "$2" = "$3" ]; then echo "  ok   $1"
+  else echo "  FAIL $1 (want '$3', got '$2')"; fail=1; fi
 }
 hasnt() {
   if printf '%s' "$2" | grep -q "$3"; then
@@ -63,8 +67,16 @@ next_ports() {
   : > "$DENON_LOG"
 }
 
+# $1 = which screen the receiver is showing: menu (default), search, playing
 start_denon() {
-  python3 "$MOCK" "$DENON_PORT" >/dev/null 2>&1 &
+  # A receiver left over from an interrupted run would answer the readiness
+  # probe below and be mistaken for this phase's for the rest of the run.
+  if curl -fsS --noproxy '*' -o /dev/null -m 2 \
+       "http://127.0.0.1:$DENON_PORT/goform/formNetAudio_StatusXml.xml" 2>/dev/null; then
+    echo "error: something is already serving on port $DENON_PORT" >&2
+    exit 1
+  fi
+  python3 "$MOCK" "$DENON_PORT" ${1:+"$1"} >/dev/null 2>&1 &
   DENON_PID=$!
   i=0
   while [ "$i" -lt 50 ]; do
@@ -221,6 +233,82 @@ start_server "$WORK/run-unset.log"
 S=$(gui "http://127.0.0.1:$GUI_PORT/api/remote/status")
 has "status says the address is not set" "$S" '"error"'
 stop_server
+
+# --- which line the cursor is on ---------------------------------------------
+# chFlag is a bitmask. A real Denon showing search results sends 0 for the
+# heading, 1 for each selectable station and 9 for the one under the cursor, so
+# a remote testing chFlag = 8 highlights nothing on any list whose items are
+# selectable. The remote worked and looked like it did not.
+echo "- the cursor is found in a flag that carries other bits too"
+next_ports; start_denon search; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-cursor.log"
+S=$(gui "http://127.0.0.1:$GUI_PORT/api/remote/status")
+has   "the station under the cursor is marked"  "$S" '"text" : "Radio Dei Helsinki", "flag" : 9, "cursor" : true'
+has   "a station beside it is not"              "$S" '"text" : "Radio Helsinki", "flag" : 1, "cursor" : false'
+has   "and is still reported as selectable"     "$S" '"flag" : 1, "cursor" : false, "selectable" : true'
+hasnt "the heading is not selectable"           "$S" '"text" : "Search by Keyword", "flag" : 0, "cursor" : false, "selectable" : true'
+stop_server; stop_denon
+
+# --- clicking a name ----------------------------------------------------------
+# The distance from the cursor to the line you clicked, in cursor keys, then
+# Enter. The mock moves its own cursor when it is sent one, so this asks where
+# the cursor ended up rather than counting presses and assuming they landed.
+echo "- clicking a line below the cursor walks down to it and enters"
+next_ports; start_denon search; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-select.log"
+R=$(post "/api/remote/select" '{"index":4}')
+has  "the click is accepted"                  "$R" '"ok":true'
+S=$(gui "http://127.0.0.1:$GUI_PORT/api/remote/status")
+has  "the cursor is on the line that was clicked" "$S" '"text" : "Radio Helsinki 92,6 MHz (160 kbps)", "flag" : 9'
+is   "it took exactly three steps down" \
+     "$(grep -c 'PutNetAudioCommand%2FCurDown' "$DENON_LOG")" "3"
+is   "and none up"  "$(grep -c 'PutNetAudioCommand%2FCurUp' "$DENON_LOG")" "0"
+is   "then one Enter" "$(grep -c 'PutNetAudioCommand%2FCurEnter' "$DENON_LOG")" "1"
+stop_server; stop_denon
+
+echo "- clicking a line above the cursor walks up to it"
+next_ports; start_denon search; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-selectup.log"
+post "/api/remote/select" '{"index":5}' >/dev/null
+post "/api/remote/select" '{"index":2}' >/dev/null
+S=$(gui "http://127.0.0.1:$GUI_PORT/api/remote/status")
+has  "the cursor came back up"  "$S" '"index" : 2, "text" : "Radio Helsinki", "flag" : 9'
+is   "three up presses"  "$(grep -c 'PutNetAudioCommand%2FCurUp' "$DENON_LOG")" "3"
+stop_server; stop_denon
+
+echo "- clicking the line the cursor is already on only presses Enter"
+next_ports; start_denon search; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-selectsame.log"
+R=$(post "/api/remote/select" '{"index":1}')
+has  "accepted"                    "$R" '"ok":true'
+is   "nothing moved"               "$(grep -c 'CurDown\|CurUp' "$DENON_LOG")" "0"
+is   "and it was entered"          "$(grep -c 'PutNetAudioCommand%2FCurEnter' "$DENON_LOG")" "1"
+stop_server; stop_denon
+
+# --- when the cursor cannot be found -----------------------------------------
+# Now Playing reports every flag as 0. Stepping from a position we do not know
+# would move the selection somewhere nobody asked for, on a screen where Enter
+# might start playing whatever it lands on.
+echo "- a screen with no cursor is left alone"
+next_ports; start_denon playing; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-nocursor.log"
+R=$(post "/api/remote/select" '{"index":2}')
+hasnt "the click is refused"       "$R" '"ok":true'
+has   "and says why"               "$R" "not showing a list"
+is    "nothing was sent at all"    "$(grep -c 'PutNetAudioCommand' "$DENON_LOG")" "0"
+stop_server; stop_denon
+
+echo "- a line that is not on the screen is refused"
+next_ports; start_denon search; write_config "127.0.0.1:$DENON_PORT"
+start_server "$WORK/run-range.log"
+R=$(post "/api/remote/select" '{"index":99}')
+hasnt "out of range is refused"    "$R" '"ok":true'
+R=$(post "/api/remote/select" '{"index":-1}')
+hasnt "so is a negative index"     "$R" '"ok":true'
+R=$(post "/api/remote/select" '{"index":"4"}')
+hasnt "and so is an index that is not a number" "$R" '"ok":true'
+is    "none of them reached the receiver" "$(grep -c 'PutNetAudioCommand' "$DENON_LOG")" "0"
+stop_server; stop_denon
 
 if [ "$fail" -ne 0 ]; then
   echo "--- last server log ---" >&2

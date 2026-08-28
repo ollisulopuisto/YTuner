@@ -29,6 +29,14 @@ const
 // szLine and chFlag are always ten entries whatever the receiver has to show.
   AVRREMOTE_LINES = 10;
 
+// chFlag is a bitmask, not a value. A real Denon showing search results reports
+// 0 for the heading, 1 for every selectable station, and 9 -- 1 or 8 -- for the
+// one the cursor is on. Testing chFlag = 8 therefore highlighted nothing on any
+// list whose items are selectable, which is every list worth browsing: the
+// remote worked and looked like it did not.
+  AVRREMOTE_FLAG_SELECTABLE = 1;
+  AVRREMOTE_FLAG_CURSOR = 8;
+
 // A keyword long enough to overflow the AVR's own field is not a search, and
 // the receiver's on-screen field stops at 30 characters anyway.
   AVRREMOTE_MAX_QUERY = 30;
@@ -44,6 +52,7 @@ var
 function RemoteCommandAllowed(const ACommand: string): boolean;
 function RemoteStatusAsJSON: string;
 function RemoteSendCommand(const ACommand: string): string;
+function RemoteSelect(AIndex: integer): string;
 function RemoteSearch(const AQuery: string): string;
 function RemoteErrorAsJSON(const AMessage: string): string;
 
@@ -184,7 +193,7 @@ var
   LLines, LFlags: TStringList;
   LResult, LEntry: TJSONObject;
   LItems: TJSONArray;
-  i: integer;
+  i, LFlag: integer;
 begin
   if RemoteBaseURL.IsEmpty then
     Exit(RemoteErrorAsJSON('No receiver address configured. Set RemoteAVRAddress in retuner.ini.'));
@@ -220,13 +229,19 @@ begin
           Continue;
         if LooksLikePageCounter(LText,LPage) then
           Continue;
+        LFlag:=0;
+        if i<LFlags.Count then
+          LFlag:=StrToIntDef(LFlags[i].Trim,0);
         LEntry:=TJSONObject.Create;
         LEntry.Add('index',i);
         LEntry.Add('text',LText);
-        if i<LFlags.Count then
-          LEntry.Add('flag',StrToIntDef(LFlags[i].Trim,0))
-        else
-          LEntry.Add('flag',0);
+        LEntry.Add('flag',LFlag);
+        // The page asks "is this the cursor", not "what is bit three of a
+        // number the receiver's firmware defines". Deciding it here keeps that
+        // knowledge in one place, next to the note above that says what the
+        // bits mean.
+        LEntry.Add('cursor',(LFlag and AVRREMOTE_FLAG_CURSOR)<>0);
+        LEntry.Add('selectable',(LFlag and AVRREMOTE_FLAG_SELECTABLE)<>0);
         LItems.Add(LEntry);
       end;
     LResult.Add('ok',True);
@@ -297,6 +312,88 @@ begin
   if not RemoteCommandAllowed(ACommand) then
     Exit('Not a permitted command.');
   Result:=PutCommand(AVRREMOTE_CMD_PREFIX+ACommand);
+end;
+
+// Where the cursor is, or -1. The receiver is the only thing that knows, so
+// this asks it rather than tracking a position of our own that would be wrong
+// the moment anyone touched the physical remote.
+function CursorLine(out ACount: integer): integer;
+var
+  LClient: TFPHTTPClient;
+  LXML: string;
+  LFlags: TStringList;
+  i: integer;
+begin
+  Result:=-1;
+  ACount:=0;
+  LXML:='';
+  LClient:=NewClient;
+  try
+    try
+      LXML:=LClient.Get(RemoteBaseURL+AVRREMOTE_STATUS_PATH);
+    except
+      on E: Exception do
+        Exit;
+    end;
+  finally
+    LClient.Free;
+  end;
+
+  LFlags:=TStringList.Create;
+  try
+    ValuesOf(SectionOf(LXML,'chFlag'),LFlags);
+    ACount:=LFlags.Count;
+    for i:=0 to LFlags.Count-1 do
+      if (StrToIntDef(LFlags[i].Trim,0) and AVRREMOTE_FLAG_CURSOR)<>0 then
+        Exit(i);
+  finally
+    LFlags.Free;
+  end;
+end;
+
+// Clicking a name is cursor keys, counted for you: the distance from where the
+// cursor is to where you clicked, then Enter.
+//
+// It steps here rather than in the page because the receiver answers one
+// request at a time -- nine round trips from a browser would be slower, and a
+// tab closed halfway through would leave the cursor somewhere nobody chose.
+// Nothing new reaches the receiver: every step is CurUp, CurDown or CurEnter,
+// each already on the list above, so this is a convenience over the same
+// commands and not a wider door.
+function RemoteSelect(AIndex: integer): string;
+var
+  LCursor, LCount, LStep, i: integer;
+  LCommand, LError: string;
+begin
+  if RemoteBaseURL.IsEmpty then
+    Exit('No receiver address configured. Set RemoteAVRAddress in retuner.ini.');
+  if (AIndex<0) or (AIndex>=AVRREMOTE_LINES) then
+    Exit('There is no line '+IntToStr(AIndex)+'.');
+
+  LCursor:=CursorLine(LCount);
+  if LCount=0 then
+    Exit('The receiver did not return a list.');
+  // Guessing would move the selection somewhere nobody asked for, on a screen
+  // where Enter might start playing it. A screen with no cursor -- Now Playing
+  // reports every flag as 0 -- is one to leave alone.
+  if LCursor<0 then
+    Exit('The receiver is not showing a list with a cursor.');
+  if AIndex>=LCount then
+    Exit('There is no line '+IntToStr(AIndex)+'.');
+
+  if AIndex<LCursor then
+    LCommand:='CurUp'
+  else
+    LCommand:='CurDown';
+
+  LStep:=Abs(AIndex-LCursor);
+  for i:=1 to LStep do
+    begin
+      LError:=RemoteSendCommand(LCommand);
+      if not LError.IsEmpty then
+        Exit(LError);
+    end;
+  Result:=RemoteSendCommand('CurEnter');
 end;
 
 function RemoteSearch(const AQuery: string): string;
