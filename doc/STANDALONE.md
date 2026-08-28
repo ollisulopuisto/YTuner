@@ -132,6 +132,13 @@ log is the moment it is talking to you; `MessageInfoLevel=4` logs every request
 after that. A menu that appears but will not play is a different layer — the
 stream or the playlist behind it — and the log says which.
 
+## A box that does the DNS too
+
+Everything above leaves the DNS override to your router. If your router will not
+do it — plenty of ISP-supplied ones will not — [APPLIANCE.md](APPLIANCE.md)
+builds the same install onto a dedicated machine that answers DNS as well, so
+the only thing configured anywhere else is one number typed into the receiver.
+
 ## What you give up
 
 The Home Assistant add-on manages options through a UI, keeps the config in

@@ -41,8 +41,13 @@ SERVER_PID=""
 MOCK_PID=""
 fail=0
 
+# Every server this run started, not just the current one. A phase that ends
+# early - an exit, an interrupt, a SIGPIPE from a pipeline reading the output -
+# used to leave its server alive holding a port, and the next run of the suite
+# then talked to it instead of its own.
+STARTED_PIDS=""
 cleanup() {
-  [ -z "$SERVER_PID" ] || kill "$SERVER_PID" 2>/dev/null || true
+  for p in $STARTED_PIDS; do kill "$p" 2>/dev/null || true; done
   [ -z "$MOCK_PID" ] || kill "$MOCK_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
@@ -53,11 +58,38 @@ bad()  { echo "  FAIL $1"; fail=1; }
 
 # $1 = directory, $2 = web port. Leaves the pid in SERVER_PID.
 start_server() {
+  # Nothing may already be answering here. A stray server from an interrupted
+  # run holding this port has cost two debugging sessions: it answers every
+  # request the readiness check makes, so the suite adopts it and reports on a
+  # process it did not start. The symptom surfaced phases later as "the process
+  # died decoding a logo".
+  #
+  # Checking before the launch rather than after is what makes this reliable.
+  # Retuner logs "Web Service: listening on" *before* the bind succeeds - with
+  # the port taken you get that line and then "Binding of socket failed" - so
+  # neither the log nor the socket can tell you whose server answered, and
+  # polling either one races the squatter.
+  if curl -fsS --noproxy '*' -o /dev/null -m 2 \
+       "http://127.0.0.1:$2/setupapp/x/loginxml.asp?token=0" 2>/dev/null; then
+    echo "error: something is already serving on port $2" >&2
+    echo "       probably a server left behind by an interrupted run:" >&2
+    echo "       pkill -f 'retuner' and try again" >&2
+    exit 1
+  fi
+
   cp "$BIN" "$1/retuner"
   ( cd "$1" && exec ./retuner > server.log 2>&1 ) &
   SERVER_PID=$!
+  STARTED_PIDS="$STARTED_PIDS $SERVER_PID"
   i=0
   while [ "$i" -lt 60 ]; do
+    # Backstop, named with the port so another service failing to bind its own
+    # is not mistaken for this one.
+    if grep -q "Binding of socket failed: $2" "$1/server.log" 2>/dev/null; then
+      echo "error: our server could not bind port $2" >&2
+      cat "$1/server.log" >&2
+      exit 1
+    fi
     if curl -fsS --noproxy '*' -o /dev/null \
          "http://127.0.0.1:$2/setupapp/x/loginxml.asp?token=0" 2>/dev/null; then
       return 0
@@ -139,6 +171,19 @@ INI
   else
     fail=1
   fi
+  # The appliance guide asks the reader to write the same set into dnsmasq, and
+  # a domain added to one list and not the other is a manufacturer that quietly
+  # stops working with nothing anywhere to say why.
+  grep -o '^address=/[^/]*/' "$ROOT/doc/APPLIANCE.md" \
+    | sed 's|address=/||; s|/$||' | sort > "$run/doc-domains"
+  printf '%s' "$patterns" | tr ',' '\n' | sed 's/^\*\.//' | sort > "$run/ini-domains"
+  if cmp -s "$run/doc-domains" "$run/ini-domains"; then
+    ok "doc/APPLIANCE.md lists exactly the shipped intercept set"
+  else
+    bad "doc/APPLIANCE.md and cfg/retuner.ini disagree about what to intercept"
+    diff "$run/ini-domains" "$run/doc-domains" | sed 's/^/       /' || true
+  fi
+
   # Every intercepted query is logged with the name as the hand-written walk
   # made of it, so the awkward names appearing there is the evidence that they
   # got that far. Without this a green run could just mean Indy dropped
