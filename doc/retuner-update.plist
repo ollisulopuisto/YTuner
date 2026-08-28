@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.ollisulopuisto.retuner.update</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/retuner/retuner-update.sh</string>
+  </array>
+
+  <!-- Once a day, well away from any hour somebody is likely to be listening.
+       If the Mac is asleep at this time launchd runs it at the next wake, which
+       is what you want on a machine that is not always on. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/usr/local/retuner/update.log</string>
+  <key>StandardErrorPath</key>
+  <string>/usr/local/retuner/update.log</string>
+</dict>
+</plist>

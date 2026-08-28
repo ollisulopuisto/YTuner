@@ -116,11 +116,62 @@ if the machine is meant to be a server.
 
 ## Updating
 
+By hand, from a source checkout:
+
 ```sh
 cd ~/retuner && git pull && ./script/build.sh
 sudo cp bin/aarch64-darwin/retuner /usr/local/retuner/retuner
 sudo launchctl kickstart -k system/io.github.ollisulopuisto.retuner
 ```
+
+### Updating itself
+
+`script/retuner-update.sh` takes the latest release straight from GitHub, so a
+machine you visit twice a year does not sit on the version it was installed
+with. Install it alongside the binary:
+
+```sh
+sudo cp script/retuner-update.sh /usr/local/retuner/
+sudo chmod +x /usr/local/retuner/retuner-update.sh
+echo 26.08.27.4 | sudo tee /usr/local/retuner/.version   # the version you have now
+sudo cp doc/retuner-update.plist /Library/LaunchDaemons/
+sudo chown root:wheel /Library/LaunchDaemons/io.github.ollisulopuisto.retuner.update.plist
+sudo chmod 644 /Library/LaunchDaemons/io.github.ollisulopuisto.retuner.update.plist
+sudo launchctl bootstrap system \
+  /Library/LaunchDaemons/io.github.ollisulopuisto.retuner.update.plist
+```
+
+The `.version` line is only to save a pointless first run: with no stamp the
+updater treats the install as unknown and reinstalls the current release once.
+
+See what it would do, without doing it:
+
+```sh
+sudo /usr/local/retuner/retuner-update.sh --check
+```
+
+What it will and will not touch:
+
+- **Only the binary is replaced.** `retuner.ini` and everything under `config/`
+  are yours. The release archive carries its own copies of both, and putting
+  those over an install is how a routine update would revert your filters,
+  stations and podcasts to the shipped defaults without saying anything.
+- **A release that does not run never becomes the installed one.** The download
+  is started against a throwaway config on a spare port first, and has to serve
+  `loginXML.asp` before it is installed anywhere.
+- **If the service does not come back, the old binary does.** The previous
+  binary is kept as `retuner.previous`; when the restarted service fails to
+  answer, it is put back and restarted again. This is the reason the whole thing
+  exists — a bad release on a machine nobody is sitting at otherwise means no
+  radio until somebody drives there.
+- **Checksums are checked when published.** Releases carry a `SHA256SUMS` file
+  beside the archives, and a mismatch refuses the update. Releases made before
+  that file existed have none and still install, on the strength of TLS to
+  GitHub — a missing file should not mean a machine can never update again.
+  `sha256 verified` in the log is how you know the comparison actually ran.
+
+`/usr/local/retuner/update.log` records every run, including the ones that found
+nothing to do.
 
 ## Checking it works, in an order that localises a failure
 
