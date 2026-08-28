@@ -30,8 +30,10 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    # Every one of these finishes inside three minutes when it is working.
-    timeout-minutes: 20
+    # Every one of these finishes inside three minutes when it is working -
+    # except Windows, which spends most of its time fetching a compiler from
+    # SourceForge and has taken twelve minutes on a run that succeeded.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -84,16 +86,45 @@ jobs:
       # x86_64 cross-compiler, so it can only produce a 32-bit binary. The
       # project's own win64 installer is a native x86_64 compiler and writes its
       # own configuration, which the package also did not do.
+      - name: Cache the Windows compiler installer
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\fpc-cache
+          key: fpc-win64-installer-3.2.2
+
       - name: Install the compiler (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Chocolatey first: it always works and guarantees a compiler, even if
-          # only the 32-bit one. Then try to put a native x86_64 compiler beside
-          # it. The mirror list is a list because download.freepascal.org, which
-          # looks like the obvious host, does not exist.
-          choco install freepascal --no-progress -y
+          # Chocolatey first: it guarantees a compiler, even if only the 32-bit
+          # one. Then try to put a native x86_64 compiler beside it. The mirror
+          # list is a list because download.freepascal.org, which looks like the
+          # obvious host, does not exist.
+          #
+          # --execution-timeout because this step is where the job actually
+          # hangs. Chocolatey's freepascal package pulls its installer from
+          # SourceForge, and unbounded that download ate the whole 20-minute job
+          # ceiling twice in one afternoon - once for 19 minutes with nothing
+          # transferred. The curl calls below were already bounded for exactly
+          # this reason; the lesson had been applied to the second half of this
+          # step and not the first.
+          #
+          # A failure here is not fatal: the combined installer fetched below
+          # carries a compiler of its own, so it is better to give up on
+          # Chocolatey quickly and try that than to sit on a dead socket.
+          foreach ($attempt in 1..2) {
+            choco install freepascal --no-progress -y --execution-timeout=300
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "::warning::chocolatey attempt $attempt failed (exit $LASTEXITCODE)"
+          }
           $exe = "$env:RUNNER_TEMP\fpc-win64.exe"
+          # Restored by the cache step above on most runs, which removes one of
+          # the two SourceForge fetches entirely.
+          if (Test-Path 'C:\fpc-cache\fpc-win64.exe') {
+            Write-Host 'using the cached installer'
+            Copy-Item 'C:\fpc-cache\fpc-win64.exe' $exe
+          }
           # There is no standalone x86_64-win64 installer: SourceForge's
           # Win32/3.2.2 directory has a combined 32-and-64 build, and a cross
           # package that adds ppcrossx64 to an i386 install. Guessing at a name
@@ -117,6 +148,8 @@ jobs:
             Remove-Item $exe -ErrorAction SilentlyContinue
           }
           if (Test-Path $exe) {
+            New-Item -ItemType Directory -Force -Path 'C:\fpc-cache' | Out-Null
+            Copy-Item $exe 'C:\fpc-cache\fpc-win64.exe' -Force
             $p = Start-Process -Wait -PassThru -FilePath $exe `
                    -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\fpc'
             Write-Host "installer exit code: $($p.ExitCode)"
