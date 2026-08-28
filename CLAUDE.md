@@ -49,7 +49,7 @@ is not.
 
 ## Testing
 
-No unit test framework. The three suites start a real binary and speak HTTP to
+No unit test framework. The suites below start a real binary and speak HTTP to
 it:
 
     ./script/smoke-test.sh          vTuner protocol, both path shapes, legacy routes
@@ -59,6 +59,7 @@ it:
     ./script/fuzz-test.sh           malformed DNS packets, hostile logos, ids that are not ids
     ./script/test-update.sh         the self-updater: what it replaces, and the rollback
     ./script/test-webgui.sh         the stations editor: who it answers, and what a wrong password costs
+    ./script/test-remote.sh         the browser remote: what it forwards to the receiver, and what it refuses
 
 Each takes a binary path as `$1` and needs no network — mocks stand in for
 radio-browser and the preset repository. That makes them an implementation-
