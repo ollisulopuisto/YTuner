@@ -9,6 +9,7 @@ all, because the receiver's only feedback is a spinner.
 
     ./script/make-preset.py --country fi --out presets/fi.ini
     ./script/make-preset.py --prune presets/fi.ini
+    ./script/make-preset.py --prune presets/fi.ini --strikes presets/strikes.json
 
 Candidates come from radio-browser.info, which is where Retuner's own directory
 comes from, so nothing new is being trusted. What the script cannot judge is
@@ -153,23 +154,96 @@ def write(path, country, groups):
             f.write("\n")
 
 
+def load_strikes(path):
+    """The record of consecutive failures, or an empty one if there is none.
+
+    A malformed file is treated as absent rather than fatal: the worst that
+    costs is one forgotten week of counting, whereas exiting would leave the
+    weekly job red until someone repaired a file nobody reads by hand.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_strikes(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
 def prune(args):
     cp = configparser.ConfigParser(interpolation=None, strict=False)
     cp.optionxform = str
     cp.read(args.prune, encoding="utf-8")
-    groups, dropped = OrderedDict(), 0
+
+    # Without --strikes a failure drops the station there and then, which is
+    # what a human running this wants. The unattended weekly job is the caller
+    # that needs patience: one CDN hiccup at 04:00 on a Sunday should not
+    # silently delete a national broadcaster from the preset.
+    book, seen = None, {}
+    if args.strikes:
+        strikes = load_strikes(args.strikes)
+        book = strikes.get(preset_key(args.prune), {})
+
+    groups, dropped, warned = OrderedDict(), 0, 0
     for cat in cp.sections():
         for name, value in cp.items(cat):
             url, _, logo = value.partition("|")
-            live = plays(url.strip(), args.timeout)
+            url, logo = url.strip(), logo.strip()
+            key = f"[{cat}] {name}"
+            live = plays(url, args.timeout)
             if live:
-                groups.setdefault(cat, []).append((name, live, logo.strip()))
-            else:
-                print(f"  drop  [{cat}] {name}: no audio from {url.strip()}", file=sys.stderr)
+                groups.setdefault(cat, []).append((name, live, logo))
+                continue
+            if book is None:
+                print(f"  drop  {key}: no audio from {url}", file=sys.stderr)
                 dropped += 1
+                continue
+            # A record is against a URL, not a name. Someone who fixes a broken
+            # link by hand should not inherit the strikes the old one collected
+            # and lose the station on the next run.
+            previous = book.get(key)
+            count = 1
+            if isinstance(previous, dict) and previous.get("url") == url:
+                count = int(previous.get("strikes", 0)) + 1
+            if count >= args.strike_limit:
+                print(f"  drop  {key}: no audio from {url}"
+                      f" ({count} runs in a row)", file=sys.stderr)
+                dropped += 1
+                continue
+            print(f"  warn  {key}: no audio from {url}"
+                  f" ({count} of {args.strike_limit})", file=sys.stderr)
+            seen[key] = {"url": url, "strikes": count}
+            groups.setdefault(cat, []).append((name, url, logo))
+            warned += 1
+
     write(args.prune, args.prune.rsplit("/", 1)[-1].split(".")[0], groups)
+    if book is not None:
+        # `seen` is built fresh each run, so a station that played, that was
+        # dropped, or that someone removed by hand leaves no record behind. The
+        # file is committed by the weekly job; anything that never expires
+        # accumulates there forever.
+        strikes = load_strikes(args.strikes)
+        if seen:
+            strikes[preset_key(args.prune)] = seen
+        else:
+            strikes.pop(preset_key(args.prune), None)
+        save_strikes(args.strikes, strikes)
+
     kept = sum(len(v) for v in groups.values())
-    print(f"pruned {args.prune}: {kept} kept, {dropped} dropped", file=sys.stderr)
+    print(f"pruned {args.prune}: {kept} kept, {dropped} dropped"
+          f"{f', {warned} failing but under the limit' if warned else ''}",
+          file=sys.stderr)
+
+
+def preset_key(path):
+    """Presets are keyed by file name: presets/fi.ini and a copy of it under
+    another directory are the same list of stations."""
+    return path.rsplit("/", 1)[-1]
 
 
 def main():
@@ -183,7 +257,16 @@ def main():
     p.add_argument("--timeout", type=int, default=12, help="seconds per stream check (default 12)")
     p.add_argument("--no-verify", dest="verify", action="store_false",
                    help="skip the does-it-play check (not recommended)")
+    p.add_argument("--strikes", metavar="FILE",
+                   help="with --prune: record consecutive failures here and "
+                        "drop a station only once it reaches the limit")
+    p.add_argument("--strike-limit", type=int, default=3, metavar="N",
+                   help="failures in a row before --strikes drops a station (default 3)")
     args = p.parse_args()
+    if args.strikes and not args.prune:
+        p.error("--strikes is only meaningful with --prune")
+    if args.strike_limit < 1:
+        p.error("--strike-limit must be at least 1")
     if args.prune:
         prune(args)
     elif args.country and args.out:
