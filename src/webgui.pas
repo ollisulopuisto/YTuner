@@ -17,7 +17,7 @@ interface
 uses
   Classes, SysUtils, base64, fpjson, jsonparser,
   fphttpserver, httpdefs,
-  common, my_stations;
+  common, my_stations, avrremote;
 
 const
   WEBGUI_SERVICE = 'Web GUI';
@@ -345,6 +345,103 @@ begin
     end;
 end;
 
+function RemotePage: string;
+var
+  P: TStringList;
+begin
+  P:=TStringList.Create;
+  try
+    P.Add('<!doctype html><html lang="en"><head><meta charset="utf-8">');
+    P.Add('<meta name="viewport" content="width=device-width,initial-scale=1">');
+    P.Add('<title>Retuner remote</title><style>');
+    P.Add(':root{--bg:#f6f5f2;--card:#fff;--ink:#1c2530;--soft:#5b6875;--line:#dcd8d0;--accent:#0e7d86;--danger:#b3261e}');
+    P.Add('@media(prefers-color-scheme:dark){:root{--bg:#151b21;--card:#1d252d;--ink:#e6ebef;--soft:#a3aeb8;--line:#2d3742;--accent:#3fc1cb;--danger:#ff8a80}}');
+    P.Add('*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}');
+    P.Add('.wrap{max-width:640px;margin:0 auto;padding:24px 16px 60px}');
+    P.Add('h1{font-size:22px;margin:0 0 2px}.sub{color:var(--soft);margin:0 0 18px;font-size:13px}');
+    P.Add('.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:14px}');
+    P.Add('.row{padding:9px 12px;border-radius:6px;font-variant-numeric:tabular-nums}');
+    P.Add('.row.cur{background:var(--accent);color:#fff;font-weight:600}');
+    P.Add('.page{color:var(--soft);font-size:13px;text-align:right;padding:4px 12px}');
+    P.Add('.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;margin:0 auto}');
+    P.Add('button{font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer}');
+    P.Add('button:active{background:var(--accent);color:#fff}');
+    P.Add('.wide{grid-column:1/4}');
+    P.Add('form{display:flex;gap:8px;margin:0}input{flex:1;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}');
+    P.Add('.err{color:var(--danger);font-size:14px;padding:8px 12px}');
+    P.Add('</style></head><body id="retuner-remote"><div class="wrap">');
+    P.Add('<h1>Retuner remote</h1>');
+    P.Add('<p class="sub">The list your receiver is showing. Arrow keys and Enter work too.</p>');
+    P.Add('<div class="card"><div id="list"></div><div class="page" id="page"></div></div>');
+    P.Add('<div class="card"><form id="search" autocomplete="off">');
+    P.Add('<input id="q" maxlength="30" placeholder="Search stations by keyword">');
+    P.Add('<button type="submit">Search</button></form></div>');
+    P.Add('<div class="card"><div class="pad">');
+    P.Add('<button data-c="CmdPageUp">Page up</button><button data-c="CurUp">Up</button><button data-c="CmdPageDown">Page down</button>');
+    P.Add('<button data-c="CurLeft">Back</button><button data-c="CurEnter">Enter</button><button data-c="CurRight">Fwd</button>');
+    P.Add('<button class="wide" data-c="CurDown">Down</button>');
+    P.Add('</div></div>');
+    P.Add('<div class="err" id="err"></div>');
+    P.Add('</div><script>');
+    P.Add('var listEl=document.getElementById("list"),pageEl=document.getElementById("page"),errEl=document.getElementById("err");');
+    P.Add('function show(e){errEl.textContent=e||"";}');
+    P.Add('function draw(d){');
+    P.Add(' if(!d.ok){show(d.error||"The receiver did not answer.");return;}');
+    P.Add(' show("");');
+    P.Add(' listEl.innerHTML="";');
+    P.Add(' d.lines.forEach(function(l){');
+    P.Add('  var r=document.createElement("div");');
+    P.Add('  r.className="row"+(l.flag===8?" cur":"");');
+    P.Add('  r.textContent=l.text;listEl.appendChild(r);});');
+    P.Add(' pageEl.textContent=d.page||"";}');
+    P.Add('function poll(){fetch("api/remote/status",{credentials:"same-origin"})');
+    P.Add(' .then(function(r){return r.json();}).then(draw)');
+    P.Add(' .catch(function(){show("Cannot reach Retuner.");});}');
+    P.Add('function send(c){fetch("api/remote/cmd",{method:"POST",credentials:"same-origin",');
+    P.Add(' headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:c})})');
+    P.Add(' .then(function(r){return r.json();})');
+    P.Add(' .then(function(d){if(!d.ok)show(d.error||"Refused.");setTimeout(poll,350);});}');
+    P.Add('document.querySelectorAll("button[data-c]").forEach(function(b){');
+    P.Add(' b.addEventListener("click",function(){send(b.dataset.c);});});');
+    P.Add('document.getElementById("search").addEventListener("submit",function(e){');
+    P.Add(' e.preventDefault();var q=document.getElementById("q").value;');
+    P.Add(' fetch("api/remote/search",{method:"POST",credentials:"same-origin",');
+    P.Add('  headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q})})');
+    P.Add(' .then(function(r){return r.json();})');
+    P.Add(' .then(function(d){if(!d.ok)show(d.error||"Refused.");setTimeout(poll,600);});});');
+    P.Add('var KEYS={ArrowUp:"CurUp",ArrowDown:"CurDown",ArrowLeft:"CurLeft",ArrowRight:"CurRight",Enter:"CurEnter",PageUp:"CmdPageUp",PageDown:"CmdPageDown"};');
+    P.Add('document.addEventListener("keydown",function(e){');
+    P.Add(' if(e.target.tagName==="INPUT")return;');
+    P.Add(' var c=KEYS[e.key];if(c){e.preventDefault();send(c);}});');
+    P.Add('poll();setInterval(poll,2000);');
+    P.Add('</script></body></html>');
+    Result:=P.Text;
+  finally
+    P.Free;
+  end;
+end;
+
+// The page sends one string per request; anything else is a malformed body.
+function StringFieldOf(const ABody, AField: string; out AValue: string): boolean;
+var
+  LData: TJSONData = nil;
+begin
+  Result:=False;
+  AValue:='';
+  try
+    LData:=GetJSON(ABody);
+    if LData is TJSONObject then
+      begin
+        AValue:=TJSONObject(LData).Get(AField,'');
+        Result:=True;
+      end;
+  except
+    on E: Exception do
+      Result:=False;
+  end;
+  LData.Free;
+end;
+
 constructor TWebGUIServer.Create;
 begin
   FServer:=TFPHTTPServer.Create(Nil);
@@ -390,7 +487,7 @@ end;
 
 procedure TWebGUIServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
 var
-  LError, LPath: string;
+  LError, LPath, LValue: string;
 begin
   if not ClientAllowed(ARequest.RemoteAddress) then
     begin
@@ -441,6 +538,46 @@ begin
         end;
     '/api/status':
       SendJSON(AResponse,HTTP_CODE_OK,StatusAsJSON);
+    '/remote','/remote/':
+      with AResponse do
+        begin
+          Code:=HTTP_CODE_OK;
+          ContentType:=HTTP_RESPONSE_CONTENT_TYPE[ctNone];
+          Content:=RemotePage;
+          ContentLength:=Length(Content);
+          SendContent;
+        end;
+    '/api/remote/status':
+      SendJSON(AResponse,HTTP_CODE_OK,RemoteStatusAsJSON);
+    '/api/remote/cmd':
+      if ARequest.Method<>'POST' then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('POST required.'))
+      else if not StringFieldOf(ARequest.Content,'cmd',LValue) then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('Malformed request.'))
+      else
+        begin
+          LError:=RemoteSendCommand(LValue);
+          if LError.IsEmpty then
+            SendJSON(AResponse,HTTP_CODE_OK,'{"ok":true}')
+          else
+            begin
+              Logging(ltWarning, string.Join(' ',[WEBGUI_SERVICE+': remote refused',LValue,'from',ARequest.RemoteAddress]));
+              SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON(LError));
+            end;
+        end;
+    '/api/remote/search':
+      if ARequest.Method<>'POST' then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('POST required.'))
+      else if not StringFieldOf(ARequest.Content,'q',LValue) then
+        SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON('Malformed request.'))
+      else
+        begin
+          LError:=RemoteSearch(LValue);
+          if LError.IsEmpty then
+            SendJSON(AResponse,HTTP_CODE_OK,'{"ok":true}')
+          else
+            SendJSON(AResponse,HTTP_CODE_OK,RemoteErrorAsJSON(LError));
+        end;
     '/api/stations':
       if ARequest.Method='POST' then
         begin
