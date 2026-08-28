@@ -251,6 +251,20 @@ jobs:
         if: runner.os != 'Windows'
         run: ./script/smoke-test.sh
 
+      # macOS is the platform this project is most often run on and the one its
+      # suites were least often run on: only the smoke test has ever executed
+      # here, so every BSD-versus-GNU difference in the other suites went
+      # unnoticed until someone ran them on a Mac by hand and concluded they
+      # were expected to fail. A suite that is expected to fail is not a suite.
+      # Linux runs these too; what they prove here is that they are portable.
+      - name: The rest of the suite, on the platform people actually run
+        if: runner.os == 'macOS'
+        run: |
+          ./script/test-presets.sh
+          ./script/test-radiobrowser.sh
+          ./script/test-preset-strikes.sh
+          ./script/fuzz-test.sh
+
       # FPC's own backtrace on Darwin prints addresses and no lines, so this asks
       # two questions a single address cannot answer. First: does it start at
       # all with the checks on and cmem left out - that build swaps the memory
