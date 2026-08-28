@@ -74,6 +74,12 @@ the result` can be turned off.
 
 It never commits to master, for the reason the next paragraph gives.
 
+One repository setting has to be on for the pull request to be opened for you:
+Settings → Actions → General → Workflow permissions → *Allow GitHub Actions to
+create and approve pull requests*. Without it the run still generates the file
+and pushes the branch, and leaves a warning with a link to open the pull
+request in one click — the work is done either way.
+
 To re-check a file that has been sitting for a while and drop what has gone
 dead:
 
