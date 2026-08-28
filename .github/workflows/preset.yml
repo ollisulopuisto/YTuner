@@ -84,7 +84,11 @@ jobs:
         run: |
           set -eu
           CC=$(printf '%s' "$COUNTRY" | tr '[:upper:]' '[:lower:]')
-          if git diff --quiet -- presets/; then
+          # --porcelain rather than `git diff --quiet`: a preset that did
+          # not exist before is untracked, and git diff does not see untracked
+          # files at all. The first run for a country -- the whole point of
+          # this -- reported "unchanged" and opened nothing.
+          if [ -z "$(git status --porcelain -- presets/)" ]; then
             echo "presets/$CC.ini is unchanged; nothing to open."
             exit 0
           fi

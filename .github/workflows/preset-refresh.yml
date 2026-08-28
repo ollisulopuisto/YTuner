@@ -48,7 +48,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          if git diff --quiet -- presets/; then
+          # --porcelain, not `git diff --quiet`: presets/strikes.json does
+          # not exist until the first run writes it, and git diff cannot see an
+          # untracked file -- so the first week's strike record would have been
+          # thrown away with the runner unless some station also changed.
+          if [ -z "$(git status --porcelain -- presets/)" ]; then
             echo "Nothing changed; every station still plays."
             exit 0
           fi
