@@ -20,6 +20,7 @@ the ones that actually exercise the hand-written walk.
 Sends each packet, then a well-formed query for an intercepted name, and reports
 the first packet after which that query stops being answered.
 """
+import errno
 import random
 import socket
 import struct
@@ -102,10 +103,41 @@ MALFORMED = [
 CASES = REACHING + MALFORMED
 
 
+# What the sender could not send, and at what size it went instead. Reported at
+# the end rather than swallowed: a case that did not reach the server has not
+# been fuzzed, whatever the exit status says.
+TRIMMED = []
+
+
 def send(payload, timeout=0.4):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.settimeout(timeout)
-        s.sendto(payload, ADDR)
+        try:
+            s.sendto(payload, ADDR)
+        except OSError as e:
+            if e.errno != errno.EMSGSIZE:
+                raise
+            # macOS caps a UDP datagram at net.inet.udp.maxdgram -- 9216 bytes
+            # by default -- and sendto() then fails with EMSGSIZE rather than
+            # truncating. The 65,000-byte case cannot leave the machine there
+            # at all, so on macOS this script died with a traceback and the
+            # suite reported the DNS server had stopped answering, which it had
+            # not. The payload is cut down to what the socket will take
+            # instead: the largest datagram the platform allows is the boundary
+            # worth fuzzing, whatever number that turns out to be.
+            limit = s.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
+            while limit >= 512:
+                try:
+                    s.sendto(payload[:limit], ADDR)
+                    TRIMMED.append((len(payload), limit))
+                    break
+                except OSError as smaller:
+                    if smaller.errno != errno.EMSGSIZE:
+                        raise
+                    limit //= 2
+            else:
+                TRIMMED.append((len(payload), 0))
+                return None
         try:
             return s.recvfrom(4096)[0]
         except (socket.timeout, ConnectionError):
@@ -155,6 +187,13 @@ def main():
 
     print("survived %d packets that reach the name walk, %d malformed, %d random"
           % (len(REACHING), len(MALFORMED), ROUNDS))
+    for wanted, actual in TRIMMED:
+        if actual:
+            print("note: %d bytes was more than this platform will send; "
+                  "sent %d instead" % (wanted, actual))
+        else:
+            print("note: %d bytes could not be sent at any size on this platform"
+                  % wanted)
     return 0
 
 
