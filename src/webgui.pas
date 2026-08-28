@@ -25,6 +25,9 @@ const
   WEBGUI_IPADDRESS = '127.0.0.1';
   WEBGUI_USER = 'admin';
   WEBGUI_REALM = 'Retuner';
+// Long enough to make guessing impractical, short enough that a typo does not
+// feel like a hang.
+  WEBGUI_FAILED_AUTH_DELAY_MS = 1000;
 // A cross-origin HTML form can only send urlencoded, multipart or plain text.
 // Requiring a JSON content type therefore forces a CORS preflight, which this
 // API never answers, so another site cannot drive it with the browser's stored
@@ -242,7 +245,7 @@ begin
     P.Add('button:hover{border-color:var(--accent)}');
     P.Add('.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}');
     P.Add('.x{border:none;background:none;color:var(--danger);font-size:18px;line-height:1;padding:4px 8px}');
-    P.Add('.bar{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:14px 0;display:flex;gap:10px;align-items:center}');
+    P.Add('.bar{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:14px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}');
     P.Add('.msg{font-size:14px;color:var(--soft)}.err{color:var(--danger)}');
     P.Add('.ro{background:#f9f0dd;border:1px solid #e0c98a;color:#6b4f14;padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:14px}');
     P.Add('@media(max-width:640px){');
@@ -259,7 +262,11 @@ begin
     P.Add('td:last-child{position:absolute;top:6px;right:6px;width:auto;padding:0}');
     P.Add('}');
     P.Add('</style></head><body><div class="wrap">');
-    P.Add('<h1>My Stations</h1><p class="sub" id="status">Loading&hellip;</p>');
+    P.Add('<h1>Retuner</h1>');
+    P.Add('<p class="sub">My Stations &mdash; the list your receiver shows '
+        + 'under that menu. Changes are written to your stations file when you '
+        + 'press Save.</p>');
+    P.Add('<p class="sub" id="status">Loading&hellip;</p>');
     P.Add('<div id="ro" class="ro" hidden>This station file is YAML. Editing here supports .ini files only, so saving is disabled.</div>');
     P.Add('<div id="cats"></div>');
     P.Add('<button id="addcat">+ Add category</button>');
@@ -314,9 +321,27 @@ end;
 
 // --- server ------------------------------------------------------------------
 
+// String comparison returns at the first differing byte, so how long it takes
+// says how many leading characters were right. Over a LAN that is a slow oracle
+// but a real one, and the fix costs nothing. The length is still visible; that
+// is the standard trade and it does not narrow the search usefully.
+function ConstantTimeEquals(const A, B: string): boolean;
+var
+  LIdx, LDiff: integer;
+begin
+  Result:=False;
+  if Length(A)<>Length(B) then
+    Exit;
+  LDiff:=0;
+  for LIdx:=1 to Length(A) do
+    LDiff:=LDiff or (Ord(A[LIdx]) xor Ord(B[LIdx]));
+  Result:=LDiff=0;
+end;
+
 function Authorised(ARequest: TFPHTTPConnectionRequest): boolean;
 var
   LHeader, LDecoded: string;
+  LUserOK, LPassOK: boolean;
 begin
   Result:=False;
   LHeader:=ARequest.Authorization;
@@ -329,8 +354,11 @@ begin
   end;
   if not LDecoded.Contains(':') then
     Exit;
-  Result:=(LDecoded.Substring(0,LDecoded.IndexOf(':'))=WebGUIUser)
-      and (LDecoded.Substring(LDecoded.IndexOf(':')+1)=WebGUIPassword);
+// Both halves are always compared: 'and' would short-circuit on a wrong user
+// name and hand back a different timing profile than a wrong password.
+  LUserOK:=ConstantTimeEquals(LDecoded.Substring(0,LDecoded.IndexOf(':')),WebGUIUser);
+  LPassOK:=ConstantTimeEquals(LDecoded.Substring(LDecoded.IndexOf(':')+1),WebGUIPassword);
+  Result:=LUserOK and LPassOK;
 end;
 
 procedure SendJSON(var AResponse: TFPHTTPConnectionResponse; ACode: integer; const ABody: string);
@@ -470,19 +498,95 @@ begin
   inherited Destroy;
 end;
 
+function IPv4ToCardinal(const AAddr: string; out AValue: Cardinal): boolean;
+var
+  LParts: TStringArray;
+  LIdx, LOctet: integer;
+begin
+  Result:=False;
+  AValue:=0;
+  LParts:=AAddr.Split(['.']);
+  if Length(LParts)<>4 then
+    Exit;
+  for LIdx:=0 to 3 do
+    begin
+      if (LParts[LIdx]='') or (Length(LParts[LIdx])>3) then
+        Exit;
+      if not TryStrToInt(LParts[LIdx],LOctet) then
+        Exit;
+      if (LOctet<0) or (LOctet>255) then
+        Exit;
+      AValue:=(AValue shl 8) or Cardinal(LOctet);
+    end;
+  Result:=True;
+end;
+
+// '192.168.10.0/24'. IPv4 only: an IPv6 client simply does not match a range,
+// and has to be named exactly if it is wanted.
+function InIPv4Range(const ARemote, AEntry: string): boolean;
+var
+  LSlash, LBits, LErr: integer;
+  LNet, LAddr, LMask: Cardinal;
+begin
+  Result:=False;
+  LSlash:=AEntry.IndexOf('/');
+  if LSlash<0 then
+    Exit;
+  Val(AEntry.Substring(LSlash+1),LBits,LErr);
+  if (LErr<>0) or (LBits<0) or (LBits>32) then
+    Exit;
+  if not IPv4ToCardinal(AEntry.Substring(0,LSlash),LNet) then
+    Exit;
+  if not IPv4ToCardinal(ARemote,LAddr) then
+    Exit;
+// A shift of 32 is undefined, so the "match everything" case is its own branch
+// rather than a mask computed from it.
+  if LBits=0 then
+    LMask:=0
+  else
+    LMask:=not Cardinal((Cardinal(1) shl (32-LBits))-1);
+  Result:=(LNet and LMask)=(LAddr and LMask);
+end;
+
 // TFPHTTPServer only grew an Address property in FPC 3.3, so on the compiler
 // this project is built with the listening socket is open on every interface
 // whatever WebGUIIPAddress says. A service that writes configuration files must
 // not be quietly wider than its setting claims, so the address is enforced here
 // on the connection instead: the port answers, but only to the clients the
-// setting names. "default" and "0.0.0.0" mean any client, which is what a
-// container or a remote host needs.
+// setting names.
+//
+// It takes a comma-separated list, and an entry may be a range. That is what
+// makes "reachable from my LAN and nowhere else" expressible -
+// '192.168.10.0/24' - which before this was not: the setting matched one exact
+// address, so anybody wanting a phone on it had to open the editor to every
+// client with '0.0.0.0'. On a service that writes configuration files, the
+// difference between "my LAN" and "anyone" is the whole point of the setting.
+//
+// "default", "0.0.0.0" and an empty value still mean any client, which is what
+// a container or a remote host needs.
 function ClientAllowed(const ARemote: string): boolean;
+var
+  LEntry: string;
 begin
-  Result:=WebGUIIPAddress.IsEmpty
-       or (WebGUIIPAddress=DEFAULT_STRING)
-       or (WebGUIIPAddress='0.0.0.0')
-       or (WebGUIIPAddress=ARemote);
+  Result:=True;
+  if WebGUIIPAddress.IsEmpty
+     or (WebGUIIPAddress=DEFAULT_STRING)
+     or (WebGUIIPAddress='0.0.0.0') then
+    Exit;
+  Result:=False;
+  for LEntry in WebGUIIPAddress.Split([',']) do
+    begin
+      if LEntry.Trim.IsEmpty then
+        Continue;
+      if LEntry.Trim.Contains('/') then
+        begin
+          if InIPv4Range(ARemote,LEntry.Trim) then
+            Exit(True);
+        end
+      else
+        if SameText(ARemote,LEntry.Trim) then
+          Exit(True);
+    end;
 end;
 
 procedure TWebGUIServer.DoHandleRequest(Sender: TObject; var ARequest: TFPHTTPConnectionRequest; var AResponse: TFPHTTPConnectionResponse);
@@ -504,6 +608,11 @@ begin
 
   if not Authorised(ARequest) then
     begin
+// A wrong password costs a second. Online guessing against Basic auth is
+// otherwise limited only by how fast the attacker can open connections, and
+// this is a service that writes configuration files. It delays nobody who
+// knows the password.
+      Sleep(WEBGUI_FAILED_AUTH_DELAY_MS);
       Logging(ltWarning, string.Join(' ',[WEBGUI_SERVICE+':','unauthorised',ARequest.URI,'from',ARequest.RemoteAddress]));
       with AResponse do
         begin

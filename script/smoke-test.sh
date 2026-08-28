@@ -155,6 +155,30 @@ else
   fi
 fi
 
+# --- a station with no logo of its own ----------------------------------------
+# A receiver asks for a logo with HEAD before it will GET one, so a 404 ends it
+# there: no art, and nothing in the log that looks like a fault. Most
+# radio-browser stations carry no favicon, so that was the ordinary case - a
+# real Denon issued one icon request in a whole session, took the 404, and never
+# asked again. Both verbs are checked because HEAD is the one that decides.
+echo "A station with no logo still gets an image"
+icon_check() { # $1 = what it is, $2 = curl args
+  # shellcheck disable=SC2086  # $2 is a deliberate argument list
+  out=$(curl -s --noproxy '*' -o /dev/null -D - $2 \
+    "http://127.0.0.1:$PORT/retuner/icon?id=MS_AAAAAAAAAAAA" 2>/dev/null || true)
+  code=$(printf '%s' "$out" | sed -n 's|^HTTP/[0-9.]* \([0-9]*\).*|\1|p' | tail -1)
+  ctype=$(printf '%s' "$out" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Tt]ype: *//p' | tail -1)
+  clen=$(printf '%s' "$out" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ll]ength: *//p' | tail -1)
+  if [ "$code" = 200 ] && [ "$ctype" = "image/jpeg" ] && [ "${clen:-0}" -gt 0 ]; then
+    echo "  ok   $1"
+  else
+    echo "  FAIL $1 (code=$code type=$ctype length=$clen)"
+    fail=1
+  fi
+}
+icon_check "GET returns an image, not a 404" ""
+icon_check "HEAD answers with a type and a length" "-X HEAD"
+
 if [ "$fail" -ne 0 ]; then
   echo "--- server log ---" >&2
   cat "$WORK/server.log" >&2

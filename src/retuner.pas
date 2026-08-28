@@ -225,6 +225,7 @@ begin
 
       if not ValueExists(INI_CONFIGURATION,INI_ICON_EXTENSION) then
         WriteString(INI_CONFIGURATION,INI_ICON_EXTENSION,'');
+      IconPlaceholder:=ReadBool(INI_CONFIGURATION,INI_ICON_PLACEHOLDER,ICON_PLACEHOLDER);
       IconExtension:=ReadString(INI_CONFIGURATION,INI_ICON_EXTENSION,'').ToLower;
       if IconExtension <> '' then
         IconExtension:='.'+IconExtension.Substring(0,3);
