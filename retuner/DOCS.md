@@ -172,8 +172,11 @@ Setup is the same as for a receiver, with one different hostname: point
 `*.wifiradiofrontier.com` at this machine instead of `*.vtuner.com`. If you use
 Retuner's own DNS service, that name is already in its intercept list.
 
-`*.frontier-nuvola.net` is deliberately left alone — that is the live successor
-service and intercepting it would break a radio that works.
+`*.frontier-nuvola.net` is deliberately left alone. Nuvola shut down on
+31 October 2024, but it was handed over to airable rather than switched off, so
+radios from brands that signed with airable still reach a working service under
+those names — intercepting them would break a radio that works. If your brand
+was dropped in that handover, that is the case for adding the name by hand.
 
 This is tested at the protocol level but **not yet confirmed on real hardware**.
 

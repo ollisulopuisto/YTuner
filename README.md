@@ -187,8 +187,13 @@ Retuner answers both, and `*.wifiradiofrontier.com` is in the default
 point that domain at Retuner and set the radio's DNS to it.
 `script/smoke-test.sh` asserts the deeper path so it cannot regress unnoticed.
 
-`*.frontier-nuvola.net` is deliberately **not** intercepted — that is the live
-successor service, and hijacking something that still works would break it.
+`*.frontier-nuvola.net` is deliberately **not** intercepted. Nuvola shut down
+on 31 October 2024, but it was a handover to airable rather than a switch-off:
+radios from brands that signed with airable still reach a working service under
+those names, and hijacking those would break a radio that works. Brands that did
+not sign are without a portal — [doc/OTHER-PORTALS.md](doc/OTHER-PORTALS.md) has
+what is known about that cohort and about the other dead directories Retuner
+could serve.
 
 > **Not yet confirmed on hardware.** The protocol entry points match and are
 > tested; the full browse flow on a real Frontier radio is unverified. If you
