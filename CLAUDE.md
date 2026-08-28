@@ -117,6 +117,32 @@ in `doc/APPLIANCE.md`. A domain added to one and not the others is a
 manufacturer that quietly stops working. `fuzz-test.sh` compares the last two
 and queries the first, so all three go red together.
 
+**A backgrounded subshell is not the process you killed.** `( cd "$WORK" &&
+./retuner > log 2>&1 ) &` sets `$!` to the subshell, not the server. Linux hides
+it: its shells fold the last command of a subshell into an `exec` on their own,
+so the pid happens to be right. bash on macOS does not, and a CI run there ended
+with the runner terminating fourteen orphan retuners — each one able to hold a
+port and be adopted by the next phase, which is the stray-server failure above
+arriving by another door. Write `exec` and mean it. Then `wait` after `kill`:
+`kill` only asks.
+
+**The suites are GNU-flavoured unless someone checks.** `sed -i 's|x|y|' file`
+works on Linux and fails on macOS, where BSD sed reads the next argument as the
+backup suffix and then runs the file name as a script; `-i.bak` means the same
+to both. macOS also caps a UDP datagram at `net.inet.udp.maxdgram`, 9216 bytes,
+and `sendto` fails with `EMSGSIZE` rather than truncating — which killed the DNS
+fuzzer mid-run and made the suite report that the server had stopped answering,
+when it was the sender that had died. The macOS runners run presets,
+radio-browser, strikes and fuzz now, so this class of difference goes red there
+rather than being discovered by hand and written down as expected.
+
+**Bind a mock through `script/testdata/localserver.py`.**
+`HTTPServer.server_bind` calls `socket.getfqdn(host)` to fill in a `server_name`
+nothing reads. 127.0.0.1 has no reverse record on a macOS runner, so that one
+call waits out the resolver: 35 seconds per bind, once per test phase, which was
+ten of the twelve minutes a macOS job took. Four milliseconds on Linux, which is
+why it survived until something ran the suites on a Mac.
+
 **The main web server honours `Application.Address`; the web GUI cannot.**
 `TFPHTTPServer` has no `Address` property on 3.2.2, so the GUI binds every
 interface and filters per connection instead.

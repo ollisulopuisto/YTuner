@@ -27,7 +27,7 @@ PID=""
 RB_PID=""
 cleanup() {
   if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
-  if [ -n "$RB_PID" ]; then kill "$RB_PID" 2>/dev/null || true; fi
+  if [ -n "$RB_PID" ]; then kill "$RB_PID" 2>/dev/null || true; wait "$RB_PID" 2>/dev/null || true; fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
