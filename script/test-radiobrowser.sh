@@ -68,9 +68,10 @@ stop_rb() {
 
 # $1 = BitrateMax, $2 = NotAllowedInName, $3 = NotAllowedInURL
 #
-# The filters go into config/<mac>.ini, not avr.ini. avr.ini is the template
-# read once at startup; the per-AVR file is what a request actually consults,
-# and writing the filters anywhere else silently has no effect at all.
+# Both files get the same filters, because which one is live depends on
+# CommonAVRini and these phases are not about that. The phase at the end of
+# this file is: under the shipped default it is avr.ini, and config/<mac>.ini
+# is never written or read at all.
 MAC=aabbccddee
 write_config() {
   mkdir -p "$WORK/config"
@@ -96,7 +97,13 @@ RBCacheTTL=0
 RBUUIDsCacheTTL=0
 INI
   for f in avr "$MAC"; do
-    cat > "$WORK/config/$f.ini" <<INI
+    write_avr_ini "$WORK/config/$f.ini" "$1" "$2" "$3"
+  done
+}
+
+# $1 = path, $2 = BitrateMax, $3 = NotAllowedInName, $4 = NotAllowedInURL
+write_avr_ini() {
+  cat > "$1" <<INI
 [Configuration]
 INIVersion=1.0.2
 Protocol=
@@ -106,12 +113,11 @@ LabelsList=Radio Browser
 [RadioBrowser Filtering]
 AllowedCodecs=
 NotAllowedCodecs=
-BitrateMax=$1
-NotAllowedInName=$2
-NotAllowedInURL=$3
+BitrateMax=${2:-}
+NotAllowedInName=${3:-}
+NotAllowedInURL=${4:-}
 [RadioBrowser Sorting]
 INI
-  done
 }
 
 start_server() {
@@ -240,6 +246,42 @@ L=$(cat "$WORK/run6.log")
 has   "the error names the URL it requested"     "$L" "127.0.0.1:$RB_PORT/json/"
 has   "the error names the cause"                "$L" "Connect to 127.0.0.1"
 stop_server
+
+# --- which config file a request actually reads ------------------------------
+# CommonAVRini ships as 1, and is True in the code too, so every receiver reads
+# config/avr.ini directly and no per-MAC file is ever created. CLAUDE.md
+# asserted the opposite unconditionally, which is how a real Denon connecting
+# for the first time was expected to leave a config/0005CD350400.ini behind. It
+# cannot: nothing writes one in this mode.
+#
+# Every phase above writes both files, so none of them can tell the two apart.
+# These two write one each, in opposite directions, which is the whole point.
+echo "- with CommonAVRini on, avr.ini is the file that counts"
+next_ports; start_rb ok; write_config "" "" ""
+rm -f "$WORK/config/$MAC.ini"
+write_avr_ini "$WORK/config/avr.ini" 192
+start_server "$WORK/run7.log"
+S=$(stations)
+hasnt "a filter in avr.ini alone is applied"     "$S" "Over The Limit"
+has   "a station under the limit still comes through" "$S" "Low Bitrate FM"
+if [ -e "$WORK/config/$MAC.ini" ]; then
+  bad "no per-MAC file is created for a served AVR"
+else
+  ok "no per-MAC file is created for a served AVR"
+fi
+stop_server; stop_rb
+
+echo "- with CommonAVRini off, config/<mac>.ini is"
+next_ports; start_rb ok; write_config "" "" ""
+awk '/^\[Configuration\]/ { print; print "CommonAVRini=0"; next } { print }' \
+  "$WORK/retuner.ini" > "$WORK/retuner.ini.new"
+mv "$WORK/retuner.ini.new" "$WORK/retuner.ini"
+write_avr_ini "$WORK/config/$MAC.ini" 192
+start_server "$WORK/run8.log"
+S=$(stations)
+hasnt "a filter in the per-MAC file is applied"  "$S" "Over The Limit"
+has   "a station under the limit still comes through" "$S" "Low Bitrate FM"
+stop_server; stop_rb
 
 if [ "$fail" -ne 0 ]; then
   echo "--- last server log ---" >&2

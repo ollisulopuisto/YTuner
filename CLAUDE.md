@@ -90,8 +90,17 @@ bookmarks an AVR saved years ago and replays verbatim; `ytunerhost` is the
 placeholder inside those files. Both are still served and read for that reason.
 Anything persisted needs a migration, and the migration needs a test.
 
-**Per-AVR settings live in `config/<mac>.ini`, not `avr.ini`.** `avr.ini` is the
-template read at startup. Filters written anywhere else silently do nothing.
+**Which AVR config file is live depends on `CommonAVRini`, and the default is
+`avr.ini`.** Shipped as `CommonAVRini=1`, and `True` in the code as well, which
+means every receiver reads `config/avr.ini` directly and `config/<mac>.ini` is
+never written or consulted. Set it to `0` and the reverse holds: each receiver
+gets its own file keyed by the MAC in the query string, and `avr.ini` becomes
+the template that file is seeded from.
+
+This entry used to assert the second half unconditionally, which is how a real
+Denon connecting for the first time was expected to produce a
+`config/0005CD350400.ini` that could not exist. Check the setting before
+deciding which file to edit; filters put in the other one silently do nothing.
 
 **Advertised URLs never carry a port.** Every one is `'http://' + URLHost + path`,
 so the service assumes it is reachable on port 80 at `act_as_host`. Changing
