@@ -38,7 +38,8 @@ uses
   openssl, opensslsockets,
   {$ENDIF}
   regexpr, my_stations, podcasts, presets, vtuner, httpserver, radiobrowser, common, bookmark,
-  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui;
+  dnsserver, threadtimer, avr, maintenance, radiobrowserdb, relayserver, webgui,
+  avrremote;
 
 // {$DEFINE FREE_ON_FINAL}
 // Enable the FREE_ON_FINAL directive in IdCompilerDefines.inc of Indy library to remove standard (ie, intentional) Indy memory leaks.
@@ -438,6 +439,10 @@ begin
       if not ValueExists(INI_WEBGUI,INI_WEBGUI_PASSWORD) then
         WriteString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
       WebGUIPassword:=ReadString(INI_WEBGUI,INI_WEBGUI_PASSWORD,'');
+
+      if not ValueExists(INI_WEBGUI,INI_WEBGUI_AVR_ADDRESS) then
+        WriteString(INI_WEBGUI,INI_WEBGUI_AVR_ADDRESS,'');
+      RemoteAVRAddress:=ReadString(INI_WEBGUI,INI_WEBGUI_AVR_ADDRESS,'').Trim;
 
       if not ValueExists(INI_DNSSERVER,INI_DNS_ADVERTISE_IP) then
         WriteString(INI_DNSSERVER,INI_DNS_ADVERTISE_IP,'');
