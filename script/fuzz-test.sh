@@ -79,6 +79,17 @@ peak_rss() {
 }
 
 # $1 = web port, $2 = DNS port
+#
+# DNSServers is deliberately empty. Every one of the random names below is a
+# name nothing intercepts, and with a resolver configured each one is forwarded
+# upstream - on the same thread that answers queries, with Indy's WaitingTime of
+# 5000 ms per entry in RootDNS_NET. Two entries that do not answer is ten
+# seconds in which the DNS service answers nothing at all, intercepted names
+# included. That is how this went red in CI on a change that touched no Pascal:
+# 8.8.8.8 declined to keep up with a burst of nonsense lookups, the backlog was
+# still draining when the intercept check began, and two names in the middle of
+# the list timed out. An empty list means Count=0, and forwarding returns at
+# once - which is also what makes this phase offline, as the suite promises.
 fuzz_dns() {
   run=$WORK/dns
   mkdir -p "$run"
@@ -95,6 +106,7 @@ Enable=1
 DNSServerIPAddress=127.0.0.1
 DNSServerPort=$2
 DNSAdvertiseIP=127.0.0.1
+DNSServers=
 [RadioBrowser]
 Enable=0
 [MyStations]

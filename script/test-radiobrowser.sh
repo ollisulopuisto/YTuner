@@ -154,6 +154,24 @@ hasnt() {
 
 echo "Testing Radio Browser handling with $BIN"
 
+# --- the configuration we actually ship ---------------------------------------
+# Every phase below writes its own avr.ini, which is exactly how the shipped one
+# went unexamined for so long. cfg/avr.ini carried a demonstration filter list -
+# AllowedCountries=Poland;Germany;*Britain*;Spain among them - while its own
+# comments said the default for each was blank. A new install anywhere outside
+# those four countries got "No station(s) found" for its own country and no hint
+# why, because the server was doing exactly what it had been told. This phase
+# runs the file as shipped, against a station list from a country not on any
+# list.
+echo "- the configuration we ship does not filter everything out"
+next_ports; start_rb ok; write_config "" "" ""
+cp "$ROOT/cfg/avr.ini" "$WORK/config/avr.ini"
+cp "$ROOT/cfg/avr.ini" "$WORK/config/$MAC.ini"
+start_server "$WORK/run-shipped.log"
+S=$(stations)
+has "a station from a country nobody listed still reaches the AVR" "$S" "<StationName>"
+stop_server; stop_rb
+
 # --- the bitrate filter -------------------------------------------------------
 # Comparing a JSON number against '' raised "Invalid variant type cast", and the
 # handler then freed the JSON array twice on the way out. A station list

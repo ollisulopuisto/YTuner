@@ -1,3 +1,10 @@
+; This file is an EXAMPLE of what the filtering settings can do, and the
+; values in [RadioBrowser Filtering] below are a demonstration, not a
+; recommendation: they hide every station outside four countries. The file
+; the program actually reads is avr.ini, which ships with those settings
+; blank, as their own comments say the default is. Copy from here
+; deliberately, a setting at a time.
+;
 [Configuration]
 ; Please do not change this value!
 INIVersion=1.0.2
@@ -43,8 +50,8 @@ Protocol=all-as-http
 ;    IdentifiersList=bookmarks;mystations;radiobrowser
 ;    LabelsList=Bookmarks;My Favourites;Radio Browser
 ;
-IdentifiersList=about;bookmarks;mystations;radiobrowser
-LabelsList=*** YTuner ***;Favourites;My Stations;Radio Browser
+IdentifiersList=about;bookmarks;mystations;podcasts;local;radiobrowser
+LabelsList=*** Retuner ***;Favourites;My Stations;Podcasts;Local Stations;Radio Browser
 
 [RadioBrowser Filtering]
 ; This setting works like a whitelist.
