@@ -120,3 +120,85 @@ Then, whatever happened:
 
 A report that says "it did not work" and names the model is still worth sending.
 Half the entries in the README started that way.
+
+## Driving a Denon from its own web interface
+
+Denon receivers of this era serve a web remote (`/NetAudio/index.html`, GoAhead)
+that drives the *receiver's* network-audio browser. When the source is Internet
+Radio that browser is showing Retuner's menu, so this is the fastest way to see
+what an AVR actually sees without standing in front of it. `/remote` in the Web
+GUI does exactly this; what follows is what it cost to learn.
+
+Verified against an AVR-4520 (2012, `CommApiVers 0210`) and an AVR-X3600H (2019,
+`0301`).
+
+**A POST to `AppCommand.xml` must have a newline after the XML declaration.**
+Without one the receiver answers `200 OK` with an empty `<rx></rx>` — no error,
+no clue. It is not the content type, not the quote style, not the number of
+commands; both receivers behave identically. An afternoon went into "this model
+refuses single-command requests" and "telnet holds block AppCommand", and both
+were this, in a hand-written probe file.
+
+```
+<?xml version="1.0" encoding="utf-8"?>\n<tx>...   answers
+<?xml version="1.0" encoding="utf-8"?><tx>...     <rx></rx>
+```
+
+**The endpoints worth knowing.**
+
+| endpoint | what |
+|---|---|
+| `GET /goform/Deviceinfo.xml` | model, `CommApiVers`, `DeviceZones`, capabilities |
+| `GET /goform/formNetAudio_StatusXml.xml` | the browse list: `szLine` and `chFlag` |
+| `POST /NetAudio/index.put.asp` | cursor and search, as `cmd0=` + `cmd1=` |
+| `POST /goform/AppCommand.xml` | zone power, source, volume, mute, surround |
+
+`cmd0` takes `PutNetAudioCommand/` + one of `CurUp CurDown CurLeft CurRight
+CurEnter CmdPageUp CmdPageDown CmdStop PresetCall PresetMemo`, or
+`PutNetFuncSearchiRadio/<keyword>` for a keyword search. `cmd1` is
+`aspMainZone_WebUpdateStatus/`. Values are percent-encoded — that is what the
+receiver's own jQuery sends, and what it accepts. Encode the whole `cmd0` value
+exactly once: `TFPHTTPClient.FormPost` encodes what you hand it, so a term
+encoded on the way in arrives as `rock%2520%2526%2520roll`.
+
+`AppCommand.xml` takes at most five `<cmd>` per `<tx>`, but several `<tx>` roots
+concatenated in one body are accepted. Commands the receiver does not support
+come back as `<error>2</error>`, positionally aligned with the query, so results
+can be matched by index.
+
+**`szLine` is always ten entries.** The trailing ones are empty padding, and one
+of the ten is a page counter like `[    1/7  ]` rather than something
+selectable. Treat "every non-empty line" as the list and you offer the page
+counter as a station that does nothing when pressed. Also: the cursor keys do
+nothing on the Now Playing screen — `CurLeft` backs out to the list first.
+
+**Zone commands are not harmless probes.** Setting a zone's source powers that
+zone on: an HTTP `Z2CD` produced a `Z2ON` event and started the outdoor
+speakers. There is no inaudible way to test zone commands on a live system.
+
+**Telnet (port 23) is one session, exclusive.** A second connection is refused,
+so if Home Assistant has `use_telnet` on it holds the slot and nothing else can
+connect — "connection refused" here means *in use*, not absent. The reconnect
+cooldown is under half a second: an immediate reconnect after closing is
+refused, 0.5 s later succeeds, which is worth knowing for anything that
+reconnects in a loop. Network Standby `Always On` does *not* gate telnet — the
+4520 still refused with it set — but it does decide whether the receiver answers
+at all in standby, and therefore whether it can be powered on over the network.
+
+**The port map differs by generation**, which is what the AVR-X / AVR-X-2016
+split is about:
+
+| | AVR-4520 | AVR-X3600H |
+|---|---|---|
+| API port | 80 | 8080 (80 serves nothing) |
+| 8080 `/description.xml` | instant | instant |
+| 8080 `/goform/*` | accepts the connection, then never answers | serves normally |
+| 60006 | closed | open |
+
+The 4520's 8080 is a trap for anything that probes `/goform` there: the socket
+opens, so it is not a refusal, and the request hangs until it times out.
+
+**`Deviceinfo.xml` sometimes lists the real surround modes.** The 4520 publishes
+15 by name under `SurroundMode`; the X3600H publishes none. Anything that wants
+to offer only the modes a receiver actually has can use that on older models and
+must fall back on newer ones.
