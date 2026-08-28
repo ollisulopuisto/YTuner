@@ -108,6 +108,12 @@ so the service assumes it is reachable on port 80 at `act_as_host`. Changing
 `WebServerPort` alone does not move it; it only stops it answering where it says
 it is.
 
+**The intercept list is written down in three places.** `INTERCEPT_DNS` in
+`src/dnsserver.pas`, `InterceptDNs=` in `cfg/retuner.ini`, and the dnsmasq block
+in `doc/APPLIANCE.md`. A domain added to one and not the others is a
+manufacturer that quietly stops working. `fuzz-test.sh` compares the last two
+and queries the first, so all three go red together.
+
 **The main web server honours `Application.Address`; the web GUI cannot.**
 `TFPHTTPServer` has no `Address` property on 3.2.2, so the GUI binds every
 interface and filters per connection instead.
