@@ -38,6 +38,11 @@ jobs:
       - name: Radio Browser behaviour
         run: ./script/test-radiobrowser.sh
 
+      # The preset generator is Python and needs no binary, so it is checked
+      # here rather than in the job that builds one.
+      - name: A station that failed once is not a dead station
+        run: ./script/test-preset-strikes.sh
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -154,11 +159,11 @@ jobs:
             || { echo "the service is not registered under user/contents.d"; exit 1; }
           shellcheck --shell=bash --exclude=SC1091,SC2148 \
             retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run
-          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh script/test-radiobrowser.sh script/fuzz-test.sh script/test-update.sh script/retuner-update.sh script/test-webgui.sh script/test-remote.sh; do
+          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh script/test-radiobrowser.sh script/fuzz-test.sh script/test-update.sh script/retuner-update.sh script/test-webgui.sh script/test-remote.sh script/test-preset-strikes.sh script/refresh-presets.sh; do
             sh -n "$f"
             shellcheck --shell=sh "$f"
           done
-          for f in script/make-preset.py script/testdata/mock-radiobrowser.py script/testdata/mock-images.py script/testdata/fuzz-dns.py script/testdata/mock-release.py script/testdata/mock-denon.py; do
+          for f in script/make-preset.py script/testdata/mock-radiobrowser.py script/testdata/mock-images.py script/testdata/fuzz-dns.py script/testdata/mock-release.py script/testdata/mock-denon.py script/testdata/mock-stream.py; do
             python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
           done
 

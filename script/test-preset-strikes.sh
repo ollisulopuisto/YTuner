@@ -200,6 +200,37 @@ hasnt "dropped straight away"             "$(cat "$P")" "Flaky FM"
 has   "and the good one is kept"          "$(cat "$P")" "Steady FM"
 stop_mock
 
+# --- the weekly wrapper -------------------------------------------------------
+# script/refresh-presets.sh is what the scheduled workflow runs. Two things
+# about it are worth asserting: an empty presets/ is not a failure (the
+# generator ships before the files do), and one country failing does not stop
+# the next country being checked.
+echo "- the weekly wrapper walks every preset"
+PORT=18705
+REFRESH="$ROOT/script/refresh-presets.sh"
+
+EMPTY="$WORK/empty"
+mkdir -p "$EMPTY"
+# set -e would kill the suite before $? could be read, which would make the
+# exit-status check below assert nothing at all.
+if OUT=$("$REFRESH" "$EMPTY" "$WORK/strikes-empty.json" 2>&1); then RC=0; else RC=$?; fi
+is   "an empty preset directory is not a failure" "$RC" "0"
+has  "and says why there was nothing to do"       "$OUT" "nothing to re-check"
+
+MANY="$WORK/many"
+mkdir -p "$MANY"
+start_mock "$PORT" /flaky
+write_preset "$MANY/fi.ini" "$PORT"
+write_preset "$MANY/se.ini" "$PORT"
+if OUT=$("$REFRESH" "$MANY" "$WORK/strikes-many.json" 2>&1); then RC=0; else RC=$?; fi
+is   "a run over several presets succeeds"   "$RC" "0"
+has  "the first country is checked"          "$OUT" "fi.ini"
+has  "and so is the one after it"            "$OUT" "se.ini"
+has  "the failing station is reported"       "$OUT" "Flaky FM"
+is   "each country keeps its own record" \
+     "$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))))" "$WORK/strikes-many.json")" "2"
+stop_mock
+
 if [ "$fail" -ne 0 ]; then
   echo "--- logs ---" >&2
   cat "$WORK"/run*.log 2>/dev/null >&2 || true
