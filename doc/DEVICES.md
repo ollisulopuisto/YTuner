@@ -172,6 +172,26 @@ selectable. Treat "every non-empty line" as the list and you offer the page
 counter as a station that does nothing when pressed. Also: the cursor keys do
 nothing on the Now Playing screen — `CurLeft` backs out to the list first.
 
+**`chFlag` is a bitmask, not a value.** Captured from a 4520 showing search
+results for "helsinki":
+
+| line | `chFlag` | |
+|---|---|---|
+| `Search by Keyword` | `0` | a heading; not selectable |
+| `Radio Dei Helsinki` | `9` | selectable, and where the cursor is |
+| `Radio Helsinki` and the rest | `1` | selectable |
+
+So bit 0 means selectable and bit 3 means cursor, and the line under the cursor
+on any ordinary list is `9`. Testing `chFlag = 8` therefore finds the cursor
+only on a screen whose items are *not* selectable, which is no list worth
+browsing — Retuner shipped that for one release and highlighted nothing.
+
+Now Playing reports `0` for every line, cursor included, since nothing there is
+selectable. Code that walks the cursor to a line has to treat "no cursor on this
+screen" as a reason to stop rather than a starting point of zero: stepping from
+a position nobody knows moves the selection somewhere nobody chose, and on a
+list Enter then plays it.
+
 **Zone commands are not harmless probes.** Setting a zone's source powers that
 zone on: an HTTP `Z2CD` produced a `Z2ON` event and started the outdoor
 speakers. There is no inaudible way to test zone commands on a live system.

@@ -32,7 +32,7 @@ const
 // CalVer: YY.MM.DD.N, N being the build within that day. The date a build was
 // cut is the useful thing to know about it -- semantic versioning would promise
 // an API this has never had.
-  APP_VERSION = '26.08.28.3';
+  APP_VERSION = '26.08.28.4';
 // The YTuner release this fork started from. Separate from APP_VERSION because
 // it means something different and does not move when we cut a build: putting
 // a Retuner version in the credit line below would attribute our releases to
