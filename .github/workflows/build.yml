@@ -90,6 +90,9 @@ jobs:
       - name: The updater installs, verifies and rolls back
         run: ./script/test-update.sh
 
+      - name: The stations editor answers only who it should
+        run: ./script/test-webgui.sh
+
       # Serves a light load and a heavy one and compares what heaptrc reports
       # unfreed. A fixed residue is expected -- Indy's intentional leaks -- so
       # growth between the two is the signal, and growth is what fails.
@@ -144,7 +147,7 @@ jobs:
             || { echo "the service is not registered under user/contents.d"; exit 1; }
           shellcheck --shell=bash --exclude=SC1091,SC2148 \
             retuner/rootfs/etc/s6-overlay/s6-rc.d/retuner/run
-          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh script/test-radiobrowser.sh script/fuzz-test.sh script/test-update.sh script/retuner-update.sh; do
+          for f in script/check-addon-image.sh script/smoke-test.sh script/test-presets.sh script/test-radiobrowser.sh script/fuzz-test.sh script/test-update.sh script/retuner-update.sh script/test-webgui.sh; do
             sh -n "$f"
             shellcheck --shell=sh "$f"
           done
