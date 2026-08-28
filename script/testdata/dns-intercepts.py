@@ -25,7 +25,7 @@ PATTERNS = [p.strip() for p in sys.argv[3].split(",") if p.strip()]
 HEADER = struct.pack(">HHHHHH", 0x2A2A, 0x0100, 1, 0, 0, 0)
 
 
-def query(host, timeout=1.5):
+def ask_once(host, timeout):
     name = b"".join(bytes([len(l)]) + l for l in host.encode().split(b".")) + b"\x00"
     packet = HEADER + name + struct.pack(">HH", 1, 1)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -35,6 +35,21 @@ def query(host, timeout=1.5):
             return s.recvfrom(4096)[0]
         except (socket.timeout, ConnectionError):
             return None
+
+
+def query(host, timeout=1.5, attempts=3):
+    """Ask up to `attempts` times, because this is UDP.
+
+    A receiver retries a query it gets no answer to, and so should this: one
+    datagram going missing is not the server declining to intercept the name.
+    A name that genuinely is not intercepted still fails every attempt, since
+    the phase runs with no upstream resolver and nothing else can answer.
+    """
+    for _ in range(attempts):
+        reply = ask_once(host, timeout)
+        if reply is not None:
+            return reply
+    return None
 
 
 def answered_with(reply, ip):
