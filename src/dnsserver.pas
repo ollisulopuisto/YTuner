@@ -25,8 +25,12 @@ const
 // wifiradiofrontier.com is Frontier Silicon's: those radios used vTuner as their
 // directory until Frontier dropped it in May 2019, and they speak the same
 // protocol on a deeper path -- see the Frontier checks in script/smoke-test.sh.
-// Deliberately NOT here: frontier-nuvola.net, which is the live successor.
-// Intercepting a service that still works would break it.
+// Deliberately NOT here: frontier-nuvola.net. Nuvola itself shut down on
+// 2024-10-31, but that was a handover to airable rather than a switch-off, and
+// radios from brands that signed with airable go on reaching a working service
+// under those names -- so intercepting them by default would break devices that
+// work today. Owners whose brand was dropped in the handover are the ones who
+// may want the name; they add it by hand. See doc/OTHER-PORTALS.md.
 // This must stay in step with InterceptDNs in cfg/retuner.ini: the Home
 // Assistant add-on does not write that key, so this constant is what its users
 // actually get.
