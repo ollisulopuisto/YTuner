@@ -57,6 +57,7 @@ it:
     ./script/test-radiobrowser.sh   filtering, and awkward upstream responses
     ./script/test-leaks.sh          whether the heap grows with load (needs CHECKED=1)
     ./script/fuzz-test.sh           malformed DNS packets, hostile logos, ids that are not ids
+    ./script/test-update.sh         the self-updater: what it replaces, and the rollback
 
 Each takes a binary path as `$1` and needs no network — mocks stand in for
 radio-browser and the preset repository. That makes them an implementation-
