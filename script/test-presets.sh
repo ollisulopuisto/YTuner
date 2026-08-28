@@ -54,7 +54,10 @@ INI
 cp "$WORK/repo/fi.ini" "$WORK/repo/fi.ini.good"
 
 start_repo() {
-  ( cd "$WORK/repo" && python3 -m http.server "$REPO_PORT" --bind 127.0.0.1 >/dev/null 2>&1 ) &
+  # localserver.py rather than -m http.server: same static file service, minus
+  # the reverse DNS lookup HTTPServer does at bind time, which costs 35 seconds
+  # per bind on a macOS runner.
+  ( cd "$WORK/repo" && exec python3 "$ROOT/script/testdata/localserver.py" "$REPO_PORT" >/dev/null 2>&1 ) &
   REPO_PID=$!
   i=0
   while [ "$i" -lt 50 ]; do
@@ -108,7 +111,7 @@ User Side=http://127.0.0.1:1/user.mp3
 INI
 
 start_server() {
-  ( cd "$WORK" && ./retuner > "$1" 2>&1 ) &
+  ( cd "$WORK" && exec ./retuner > "$1" 2>&1 ) &
   PID=$!
   i=0
   while [ "$i" -lt 50 ]; do
@@ -197,7 +200,10 @@ stop_repo
 
 echo "- a country code that is not one"
 cp "$WORK/repo/fi.ini.good" "$WORK/repo/fi.ini"
-sed -i 's|^PresetsCountries=fi$|PresetsCountries=../../etc,fi|' "$WORK/retuner.ini"
+# -i.bak rather than -i: BSD sed reads the argument after -i as the backup
+# suffix, so the bare form consumes the script and then tries to run the file
+# name as one. That is one of the reasons this suite has never passed on macOS.
+sed -i.bak 's|^PresetsCountries=fi$|PresetsCountries=../../etc,fi|' "$WORK/retuner.ini"
 start_server "$WORK/run4.log"
 has "the bad code is refused by name"        "$(cat "$WORK/run4.log")" "two-letter code"
 if [ -e "$WORK/config/presets/../../etc.ini" ] || [ -e "$WORK/etc.ini" ]; then

@@ -163,7 +163,7 @@ jobs:
             sh -n "$f"
             shellcheck --shell=sh "$f"
           done
-          for f in script/make-preset.py script/testdata/mock-radiobrowser.py script/testdata/mock-images.py script/testdata/fuzz-dns.py script/testdata/mock-release.py script/testdata/mock-denon.py script/testdata/mock-stream.py; do
+          for f in script/make-preset.py script/testdata/mock-radiobrowser.py script/testdata/mock-images.py script/testdata/fuzz-dns.py script/testdata/mock-release.py script/testdata/mock-denon.py script/testdata/mock-stream.py script/testdata/localserver.py; do
             python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f"
           done
 

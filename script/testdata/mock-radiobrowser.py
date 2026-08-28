@@ -19,7 +19,9 @@ upstream query, and it is invisible in the response the mock sends back.
 import json
 import os
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from localserver import serve
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "ok"
 REQUEST_LOG = os.environ.get("RB_LOG")
@@ -111,5 +113,4 @@ class H(BaseHTTPRequestHandler):
             self._send([])
 
 
-HTTPServer.allow_reuse_address = True
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+serve(sys.argv[1], H)
