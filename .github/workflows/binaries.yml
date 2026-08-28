@@ -38,6 +38,14 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-linux
+          # A native ARM64 runner rather than a cross-compiler: Debian and
+          # Ubuntu package FPC for arm64, so the Linux install step above works
+          # unchanged, and the smoke suite then runs on the architecture it
+          # produced. This is the build a Raspberry Pi appliance needs -
+          # 64-bit Raspberry Pi OS cannot run the x86_64 archive, and compiling
+          # FPC on the Pi itself is a long evening.
+          - os: ubuntu-24.04-arm
+            target: aarch64-linux
           - os: macos-latest
             target: aarch64-darwin
           # macos-13 was never scheduled - the label has been retired, and a job

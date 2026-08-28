@@ -226,7 +226,7 @@ You will want to point your service file, Docker command or shell alias at
 `retuner` rather than `ytuner`, since that is the file that now exists.
 
 Save and extract the files into a directory you have read/write/execute rights to. The account running Retuner also needs permission to open TCP port 80, and UDP 53 if you enable the DNS service.
->Tip: if something on that machine already answers on port 80, see [doc/STANDALONE.md](doc/STANDALONE.md) — it covers why the port is not negotiable, how to tell whether a second address would help, and a systemd unit for running Retuner on a small machine of its own. [doc/MACOS.md](doc/MACOS.md) does the same for a Mac that is already on, with a launchd daemon.
+>Tip: if something on that machine already answers on port 80, see [doc/STANDALONE.md](doc/STANDALONE.md) — it covers why the port is not negotiable, how to tell whether a second address would help, and a systemd unit for running Retuner on a small machine of its own. [doc/MACOS.md](doc/MACOS.md) does the same for a Mac that is already on, with a launchd daemon. [doc/APPLIANCE.md](doc/APPLIANCE.md) goes one further: a dedicated box on Ethernet that serves the receivers *and* answers their DNS, so nothing has to be configured on the router at all.
 
 You should end up with a directory laid out roughly like this:
 

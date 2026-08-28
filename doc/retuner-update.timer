@@ -1,0 +1,15 @@
+[Unit]
+Description=Check for a new Retuner release daily
+Documentation=https://github.com/ollisulopuisto/retuner/blob/master/doc/APPLIANCE.md
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+# Spread the load on the release host, and stop every appliance in the world
+# asking at the same second.
+RandomizedDelaySec=30m
+# A box that was switched off at 04:30 checks when it next comes up, rather than
+# waiting a whole day. An appliance is not always on.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

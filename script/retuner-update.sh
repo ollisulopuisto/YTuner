@@ -35,7 +35,6 @@ case "$(uname -m)" in
   x86_64|amd64)  cpu=x86_64 ;;
   *) die "unsupported architecture $(uname -m)" ;;
 esac
-[ "$os" = linux ] && [ "$cpu" = aarch64 ] && die "no aarch64-linux release is built"
 TARGET="$cpu-$os"
 
 [ -x "$PREFIX/retuner" ] || die "no installed binary at $PREFIX/retuner"
