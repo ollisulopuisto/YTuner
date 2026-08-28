@@ -54,7 +54,10 @@ INI
 cp "$WORK/repo/fi.ini" "$WORK/repo/fi.ini.good"
 
 start_repo() {
-  ( cd "$WORK/repo" && python3 -m http.server "$REPO_PORT" --bind 127.0.0.1 >/dev/null 2>&1 ) &
+  # localserver.py rather than -m http.server: same static file service, minus
+  # the reverse DNS lookup HTTPServer does at bind time, which costs 35 seconds
+  # per bind on a macOS runner.
+  ( cd "$WORK/repo" && exec python3 "$ROOT/script/testdata/localserver.py" "$REPO_PORT" >/dev/null 2>&1 ) &
   REPO_PID=$!
   i=0
   while [ "$i" -lt 50 ]; do

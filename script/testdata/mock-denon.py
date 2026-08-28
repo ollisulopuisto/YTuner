@@ -20,7 +20,9 @@ indistinguishable from one that works, unless you look at the wire.
 """
 import os
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from localserver import serve
 
 REQUEST_LOG = os.environ.get("DENON_LOG")
 
@@ -89,5 +91,4 @@ class H(BaseHTTPRequestHandler):
         self._send("<?xml version=\"1.0\"?><rx></rx>\n")
 
 
-HTTPServer.allow_reuse_address = True
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+serve(sys.argv[1], H)

@@ -15,7 +15,9 @@ shell driver does not have to keep a duplicate list in step with this one.
 import struct
 import sys
 import zlib
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from localserver import serve
 
 
 def chunk(typ, data):
@@ -122,4 +124,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+    serve(sys.argv[1], Handler)

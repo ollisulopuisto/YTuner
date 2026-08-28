@@ -19,6 +19,8 @@ so tested a field GitHub does not send.
 """
 import hashlib
 import http.server
+
+from localserver import serve
 import json
 import os
 import sys
@@ -107,4 +109,4 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, "not found", "text/plain")
 
 
-http.server.HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+serve(PORT, Handler)

@@ -13,7 +13,9 @@ make-preset.py treats a 200 with no body as a failure -- a server that answers
 and then sends nothing disappoints the receiver exactly as a 404 does.
 """
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from localserver import serve
 
 DEAD = set(sys.argv[2:])
 
@@ -38,4 +40,4 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+    serve(sys.argv[1], H)
