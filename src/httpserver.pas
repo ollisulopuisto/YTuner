@@ -19,7 +19,7 @@ unit httpserver;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, Math,
+  Classes, SysUtils, StrUtils, Math, base64, syncobjs,
   fpimage, fpimgcanv,
 {$IFDEF WRITERJPG}
   fpwritejpeg,
@@ -99,11 +99,14 @@ const
 
   WEBSERVER_PORT = 80;
 
+{$I placeholder-icon.inc}
+
 var
   WebServerIPAddress: string;
   WebServerPort: integer = WEBSERVER_PORT;
   IconSize: integer = ICON_SIZE;
   IconCache: boolean = ICON_CACHE;
+  IconPlaceholder: boolean = ICON_PLACEHOLDER;
   IconExtension: string = '';
   HTTPCodeRedirect: integer = HTTP_CODE_REDIRECT;
 
@@ -573,6 +576,119 @@ begin
   Result:=True;
 end;
 
+// A receiver asks for a station logo with HEAD before it will GET one, so a 404
+// here is the end of it: no art, and nothing in the log that looks like a
+// fault. Most radio-browser stations carry no favicon at all, which makes that
+// the common case rather than the exceptional one - a real Denon issued exactly
+// one icon request in a whole session of browsing, took the 404, and never
+// asked again.
+//
+// Serving the Retuner mark instead answers the HEAD with a length, so the
+// receiver goes on to fetch it. It is rendered once, at the configured icon
+// size, because it is the same bytes for every station that has no logo.
+var
+  PlaceholderLock: TCriticalSection;
+  PlaceholderBytes: string = '';
+  PlaceholderTried: boolean = False;
+
+function PlaceholderIcon: string;
+var
+  LPng, LOut: TMemoryStream;
+  LImage: TFPMemoryImage;
+  LReader: TFPReaderPNG;
+  LWriter: TFPCustomImageWriter;
+  LRaw: string;
+begin
+  PlaceholderLock.Enter;
+  try
+    Result:=PlaceholderBytes;
+    if PlaceholderTried then
+      Exit;
+    PlaceholderTried:=True;
+    try
+      LRaw:=DecodeStringBase64(PLACEHOLDER_ICON_PNG_BASE64);
+      LPng:=TMemoryStream.Create;
+      try
+        LPng.Write(LRaw[1],Length(LRaw));
+        LPng.Position:=0;
+        LImage:=TFPMemoryImage.Create(0,0);
+        try
+          LImage.UsePalette:=False;
+          LReader:=TFPReaderPNG.Create;
+          try
+            LImage.LoadFromStream(LPng,LReader);
+          finally
+            LReader.Free;
+          end;
+          {$IFDEF WRITERJPG}
+          LWriter:=TFPWriterJPEG.Create;
+          {$ELSE}
+          LWriter:=TFPWriterPNG.Create;
+          {$ENDIF}
+          try
+            LOut:=TMemoryStream.Create;
+            try
+// Scaled the same way every other logo is, so a receiver that was given 75 in
+// IconSize gets 75 here too.
+              with TFPImageCanvas.Create(TFPMemoryImage.Create(IconSize,IconSize)) do
+                try
+                  Image.UsePalette:=False;
+                  StretchDraw(0,0,IconSize,IconSize,LImage);
+                  Image.SaveToStream(LOut,LWriter);
+                finally
+                  Image.Free;
+                  Free;
+                end;
+              SetLength(PlaceholderBytes,LOut.Size);
+              LOut.Position:=0;
+              if LOut.Size>0 then
+                LOut.Read(PlaceholderBytes[1],LOut.Size);
+            finally
+              LOut.Free;
+            end;
+          finally
+            LWriter.Free;
+          end;
+        finally
+          LImage.Free;
+        end;
+      finally
+        LPng.Free;
+      end;
+      Logging(ltDebug, 'Placeholder icon rendered at '+IconSize.ToString+'px, '
+        +Length(PlaceholderBytes).ToString+' bytes');
+    except
+      on E : Exception do
+        begin
+          PlaceholderBytes:='';
+          Logging(ltError, 'Cannot render the placeholder icon ('+E.Message+')');
+        end;
+    end;
+    Result:=PlaceholderBytes;
+  finally
+    PlaceholderLock.Leave;
+  end;
+end;
+
+// Answer with the mark rather than a 404, when there is one to answer with.
+function ServedPlaceholder(ARes: TResponse): boolean;
+var
+  LBytes: string;
+begin
+  Result:=False;
+  if not IconPlaceholder then
+    Exit;
+  LBytes:=PlaceholderIcon;
+  if LBytes='' then
+    Exit;
+  {$IFDEF WRITERJPG}
+  ServerResponse(HTTP_CODE_OK,ctJPG,ARes,LBytes);
+  {$ELSE}
+  ServerResponse(HTTP_CODE_OK,ctPNG,ARes,LBytes);
+  {$ENDIF}
+  Result:=True;
+end;
+
 procedure GetIcon(AReq: TRequest; ARes: TResponse);
 var
   LStream: TMemoryStream;
@@ -776,7 +892,8 @@ begin
     begin
       if LURL <> '' then
         Logging(ltWarning, 'Cannot process image from "'+LURL+'"');
-      ServerResponse(HTTP_CODE_NOT_FOUND,ctNone,ARes,'');
+      if not ServedPlaceholder(ARes) then
+        ServerResponse(HTTP_CODE_NOT_FOUND,ctNone,ARes,'');
     end;
 end;
 
@@ -1384,5 +1501,11 @@ begin
 end;
 // END - Relay support
 
-end.
 
+initialization
+  PlaceholderLock:=TCriticalSection.Create;
+
+finalization
+  PlaceholderLock.Free;
+
+end.
