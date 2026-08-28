@@ -24,3 +24,8 @@ res/*.zip
 /config/
 /db/
 heap.trc
+
+# Python bytecode. Committed twice by accident - `git add -A` after running a
+# testdata script picks it up, and it is a build artifact of whoever ran it.
+__pycache__/
+*.py[cod]

@@ -78,9 +78,11 @@ a single audio stream is not a demanding job on hardware made this century.
 **The constraint is latency, not the board.** Nothing here lets a receiver join
 Spotify Connect — a receiver plays an HTTP stream, so bridging means running a
 Connect client on this box, re-encoding what it plays, and serving that as a
-station. It works, and the delay is dreadful: receivers buffer internet radio by
-several seconds to tens of seconds, so play, pause and skip in the phone app all
-land that far late. Fine for putting an album on; unusable as a remote control.
+station. [SPOTIFY.md](SPOTIFY.md) is the recipe, and it is straight about the
+cost: several seconds between pressing play and hearing sound, again on every
+track change, and transport buttons on the receiver that do nothing useful. Fine
+for putting an album on; unusable as a remote control, and no amount of CPU
+changes that, because the buffer is in the amplifier.
 
 So before buying anything for this reason, check what the receiver already does.
 Most AV receivers made since about 2015 have Spotify Connect, AirPlay or
@@ -178,8 +180,13 @@ bind-interfaces
 Keep that list in step with `InterceptDNs` in `cfg/retuner.ini`; they are the
 same set and drifting apart is how a manufacturer quietly stops working.
 
-`frontier-nuvola.net` is deliberately absent. It is the live successor service
-and intercepting it would break radios that still have somewhere to go.
+`frontier-nuvola.net` is deliberately absent — but not because it is still
+running. Nuvola shut down on 31 October 2024; it was handed to airable rather
+than switched off, and radios from brands that signed with airable go on
+reaching a working service under those names, so intercepting them by default
+would break hardware that works today. If your brand was dropped in that
+handover, adding the name by hand is exactly the case for it. See
+[OTHER-PORTALS.md](OTHER-PORTALS.md).
 
 ### 4. Tell Retuner where it lives
 
